@@ -1,8 +1,9 @@
 import os
 import telebot
-# --- MOVIEPY AYARLARI (KRİTİK KISIM) ---
+# --- MOVIEPY AYARLARI (DÜZELTİLDİ) ---
 from moviepy.config import change_settings
-change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
+# Railway'de yüklü olan ImageMagick'i otomatik bulması için ayar:
+change_settings({"IMAGEMAGICK_BINARY": "convert"})
 
 import requests
 import json
@@ -60,14 +61,15 @@ def create_video():
     video = VideoFileClip(video_path).subclip(0, audio.duration)
     video = video.set_audio(audio)
     
-    # 4. Altyazı Ekle
+    # 4. Altyazı Ekle (Düzeltilmiş Ayar ile)
     try:
+        # Yazıyı videonun ortasına beyaz renkle yazar
         txt_clip = TextClip(TEXT, fontsize=50, color='white', size=video.size, method='caption')
         txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
         final_video = CompositeVideoClip([video, txt_clip])
     except Exception as e:
-        print(f"Altyazı hatası: {e}")
-        final_video = video # Altyazı olmazsa videosunu at
+        print(f"Altyazı hatası devam ediyor: {e}")
+        final_video = video # Altyazı başarısız olursa yine de videoyu oluştur
 
     output_path = "final_short.mp4"
     final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
@@ -83,7 +85,7 @@ def send_welcome(message):
             with open(video_file, 'rb') as v:
                 bot.send_video(message.chat.id, v, caption="İşte videon hazır! 🎬")
         else:
-            bot.reply_to(message, "Video oluşturulurken bir hata oldu.")
+            bot.reply_to(message, "Video oluşturulurken bir hata oldu (Video bulunamadı).")
     except Exception as e:
         bot.reply_to(message, f"Hata oluştu: {str(e)}")
 
