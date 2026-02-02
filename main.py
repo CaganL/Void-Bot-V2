@@ -1,27 +1,13 @@
 import os
 import telebot
-import shutil
-from moviepy.config import change_settings
-
-# --- KRİTİK DÜZELTME: ImageMagick v7 Uyumu ---
-# Railway 'magick' komutunu kullanıyor, biz de onu seçiyoruz.
-if shutil.which("magick"):
-    change_settings({"IMAGEMAGICK_BINARY": "magick"})
-elif shutil.which("convert"):
-    change_settings({"IMAGEMAGICK_BINARY": "convert"})
-else:
-    print("⚠️ DİKKAT: ImageMagick bulunamadı. nixpacks.toml dosyasını kontrol et.")
-
-# --- PILLOW YAMASI ---
-import PIL.Image
-if not hasattr(PIL.Image, 'ANTIALIAS'):
-    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-
 import requests
 import random
 import asyncio
 import edge_tts
-from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+import numpy as np
+import textwrap
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
@@ -32,6 +18,48 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 # --- İÇERİK ---
 TOPIC = "Fear"
 TEXT = "Did you know that fear is just a chemical reaction? Your brain prepares you to fight or flight."
+
+# --- ÖZEL FONKSİYON: ImageMagick Olmadan Yazı Yazma ---
+def create_text_image_clip(text, duration, video_size, fontsize=40):
+    W, H = video_size
+    
+    # 1. Şeffaf bir resim oluştur (Tuval)
+    img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    # 2. Font ayarla (Sistem fontu bulamazsa varsayılanı kullanır)
+    try:
+        # Linux için yaygın font
+        font = ImageFont.truetype("DejaVuSans.ttf", fontsize)
+    except:
+        try:
+            # Alternatif font
+            font = ImageFont.truetype("arial.ttf", fontsize)
+        except:
+            # Hiçbiri yoksa varsayılan (biraz çirkin olabilir ama çalışır)
+            font = ImageFont.load_default()
+    
+    # 3. Metni ekrana sığacak şekilde parçala (Wrap)
+    # Ortalama her satıra 20-25 karakter sığar (fontsize'a göre değişir)
+    char_width = 20 
+    wrapper = textwrap.TextWrapper(width=int(W / char_width)) 
+    word_list = wrapper.wrap(text=text)
+    caption_new = '\n'.join(word_list)
+    
+    # 4. Yazıyı ortala ve çiz
+    # Metnin kaplayacağı alanı hesapla (kabaca)
+    text_w, text_h = draw.textbbox((0, 0), caption_new, font=font)[2:]
+    
+    x_pos = (W - text_w) / 2
+    y_pos = (H - text_h) / 2
+    
+    # Siyah gölge (okunabilirlik için)
+    draw.text((x_pos+2, y_pos+2), caption_new, font=font, fill="black", align="center")
+    # Beyaz yazı
+    draw.text((x_pos, y_pos), caption_new, font=font, fill="white", align="center")
+    
+    # 5. Resmi MoviePy klibine çevir
+    return ImageClip(np.array(img)).set_duration(duration)
 
 async def generate_voice_over(text, output_file="voiceover.mp3"):
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
@@ -71,7 +99,7 @@ def create_video():
         audio = AudioFileClip("voiceover.mp3")
         video = VideoFileClip(video_path).subclip(0, audio.duration)
         
-        # RAM TASARRUFU: Boyut küçültme
+        # RAM TASARRUFU
         if video.h > 960: video = video.resize(height=960)
         
         w, h = video.size
@@ -82,13 +110,14 @@ def create_video():
         
         video = video.set_audio(audio)
         
-        # 4. ALTYAZI (Linux Fontu + Magick Ayarı)
+        # 4. ALTYAZI (YENİ GÜVENLİ YÖNTEM)
         try:
-            txt_clip = TextClip(TEXT, fontsize=40, color='white', font='DejaVu-Sans', size=(video.w - 40, None), method='caption')
-            txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
+            # Artık TextClip yok, özel fonksiyonumuz var
+            txt_clip = create_text_image_clip(TEXT, video.duration, video.size)
             final_video = CompositeVideoClip([video, txt_clip])
         except Exception as e:
-            return f"Altyazı Hatası: {str(e)}"
+            print(f"Yazı hatası: {e}")
+            final_video = video
 
         output_path = "final_short.mp4"
         final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
@@ -101,14 +130,14 @@ def create_video():
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... 🎬")
+    bot.reply_to(message, "Video hazırlanıyor... (ImageMagick'siz Özel Mod) 🎨")
     result = create_video()
     
     if result and ("Hata" in result or "bulunamadı" in result):
         bot.reply_to(message, f"❌ {result}")
     elif result:
         with open(result, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption="İşte oldu! 🚀")
+            bot.send_video(message.chat.id, v, caption="Zafer bizimdir! 🎬")
     else:
         bot.reply_to(message, "Bilinmeyen hata.")
 
