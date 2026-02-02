@@ -1,5 +1,13 @@
 import os
 import telebot
+
+# --- KRİTİK YAMA (ANTIALIAS FİX) ---
+# Pillow 10+ sürümünde kaldırılan komutu geri getiriyoruz:
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+# -----------------------------------
+
 # --- MOVIEPY AYARLARI ---
 from moviepy.config import change_settings
 change_settings({"IMAGEMAGICK_BINARY": "convert"})
@@ -63,17 +71,15 @@ def create_video():
     # 3. Klipleri Hazırla
     audio = AudioFileClip("voiceover.mp3")
     
-    # RAM Tasarrufu: Videoyu küçült
+    # RAM Tasarrufu: Videoyu küçült (960p)
     video = VideoFileClip(video_path).subclip(0, audio.duration)
-    # Hedef yükseklik 960 (Dikey HD'den biraz düşük, hafıza dostu)
     if video.h > 960:
         video = video.resize(height=960) 
     
-    # Kırpma (Crop) işlemi - 9:16 formatı için
+    # 9:16 Kırpma
     w, h = video.size
     target_ratio = 9/16
     if w / h > target_ratio:
-        # Video çok geniş, yanlardan kırp
         new_w = h * target_ratio
         video = video.crop(x1=(w/2 - new_w/2), width=new_w, height=h)
     
@@ -85,12 +91,12 @@ def create_video():
         txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
         final_video = CompositeVideoClip([video, txt_clip])
     except Exception as e:
-        # Altyazı hatası olursa videosuz devam et
+        print(f"Altyazı hatası: {e}")
         final_video = video
 
     output_path = "final_short.mp4"
     
-    # Render (Ultrafast + Threads 1 = RAM Dostu)
+    # Render (Hızlı Mod)
     final_video.write_videofile(
         output_path, 
         codec="libx264", 
@@ -106,14 +112,13 @@ def create_video():
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... (Debug Modu Açık) 🐞")
+    bot.reply_to(message, "Video hazırlanıyor... (Yama yüklendi) 🩹")
     
     try:
         video_file = create_video()
         with open(video_file, 'rb') as v:
             bot.send_video(message.chat.id, v, caption="İşte videon hazır! 🎬")
     except Exception as e:
-        # HATAYI BURADA YAKALAYIP SANA GÖNDERECEK
         bot.reply_to(message, f"❌ HATA DETAYI:\n{str(e)}")
 
 print("Bot çalışıyor...")
