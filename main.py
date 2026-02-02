@@ -1,170 +1,83 @@
 import os
-import random
+import telebot
+import requests
 import json
-import sys
+import random
 import asyncio
 import edge_tts
-import textwrap
-import requests
-import time
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, vfx, CompositeAudioClip
-from moviepy.audio.fx.all import volumex
+from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+from moviepy.video.tools.subtitles import SubtitlesClip
 
-# --- GLOBAL ENGLISH CONTENT POOL ---
-STORIES = [
-    {
-        "topic": "HORROR", 
-        "search_query": "scary forest fog dark spooky", 
-        "title": "😱 MIDNIGHT VISITOR", 
-        "text": "According to the Japanese legend of Kuchisake-onna, if you walk on a foggy street at night and a masked woman asks, 'Am I beautiful?', never answer. If you say yes, she removes her mask to reveal a slit mouth and screams, 'How about now?' If you say no... well, you don't want to know."
-    },
-    {
-        "topic": "FACTS", 
-        "search_query": "space galaxy cinematic stars", 
-        "title": "🪐 VENUS IS WEIRD", 
-        "text": "Time on Venus is absolute chaos. Venus rotates so slowly that a single day on Venus lasts longer than a whole year on Venus. Imagine celebrating your birthday every single day. That is the hottest planet in our solar system for you."
-    },
-    {
-        "topic": "OCEAN", 
-        "search_query": "deep ocean waves cinematic", 
-        "title": "🌊 POWER OF THE OCEAN", 
-        "text": "The oceans are so massive that humans have explored only five percent of them. If every single human on Earth jumped into the ocean at the same time, the water level would rise by less than the width of a human hair. We are nothing compared to the deep blue."
-    },
-    {
-        "topic": "SCIENCE", 
-        "search_query": "science dna laboratory abstract", 
-        "title": "🍌 YOU ARE A BANANA", 
-        "text": "Do you feel special? Think again. Human DNA is fifty percent identical to the DNA of a banana. Genetically speaking, you are half a fruit. Nature really has a twisted sense of humor, doesn't it?"
-    }
-]
-
+# --- AYARLAR ---
+TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 
-def get_credentials():
-    token_json = os.environ.get("TOKEN_JSON")
-    if not token_json:
-        print("🚨 ERROR: TOKEN_JSON not found!")
-        sys.exit(1)
-    return Credentials.from_authorized_user_info(json.loads(token_json))
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-async def generate_pro_voice(text, filename="voice.mp3"):
-    print("🎙️ Generating English Voiceover...")
-    try:
-        # Changed to English Voice (Christopher is deep and cinematic)
-        communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+5%", pitch="-2Hz")
-        await communicate.save(filename)
-        print("✅ Voiceover ready.")
-    except Exception as e:
-        print(f"🚨 VOICE ERROR: {e}")
-        sys.exit(1)
+# --- KONU VE METİN (Basit Test İçin) ---
+TOPIC = "Fear"
+TEXT = "Did you know that fear is just a chemical reaction? Your brain prepares you to fight or flight."
 
-def download_video_from_pexels(query):
-    if not PEXELS_API_KEY:
-        print("🚨 ERROR: PEXELS_API_KEY not found!")
-        sys.exit(1)
-    
-    print(f"🌍 Searching Pexels for: {query}")
+async def generate_voice_over(text, output_file="voiceover.mp3"):
+    communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
+    await communicate.save(output_file)
+
+def get_stock_footage(query, duration):
     headers = {"Authorization": PEXELS_API_KEY}
-    url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=5"
+    url = f"https://api.pexels.com/videos/search?query={query}&per_page=5&orientation=portrait"
+    r = requests.get(url, headers=headers)
+    data = r.json()
+    video_files = []
+    for video in data.get("videos", []):
+        files = video.get("video_files", [])
+        best_file = max(files, key=lambda x: x["width"] * x["height"])
+        video_files.append(best_file["link"])
+    
+    if not video_files:
+        return None
+    
+    selected_video = random.choice(video_files)
+    video_path = "input_video.mp4"
+    with open(video_path, "wb") as f:
+        f.write(requests.get(selected_video).content)
+    return video_path
+
+def create_video():
+    # 1. Ses Oluştur
+    asyncio.run(generate_voice_over(TEXT))
+    
+    # 2. Video İndir
+    video_path = get_stock_footage(TOPIC, 10)
+    if not video_path:
+        return None
+
+    # 3. Birleştir
+    audio = AudioFileClip("voiceover.mp3")
+    video = VideoFileClip(video_path).subclip(0, audio.duration)
+    video = video.set_audio(audio)
+    
+    # 4. Altyazı (Basit)
+    txt_clip = TextClip(TEXT, fontsize=50, color='white', size=video.size, method='caption')
+    txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
+    
+    final_video = CompositeVideoClip([video, txt_clip])
+    output_path = "final_short.mp4"
+    final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
+    return output_path
+
+@bot.message_handler(commands=['start', 'video'])
+def send_welcome(message):
+    bot.reply_to(message, "Video hazırlanıyor... Lütfen yaklaşık 1-2 dakika bekle. ☕")
     
     try:
-        r = requests.get(url, headers=headers)
-        if r.status_code != 200:
-            print(f"🚨 PEXELS API ERROR: {r.status_code}")
-            sys.exit(1)
-            
-        data = r.json()
-        if "videos" in data and len(data["videos"]) > 0:
-            video_data = random.choice(data["videos"])
-            best_link = video_data["video_files"][0]["link"]
-            print(f"📥 Downloading video... (ID: {video_data['id']})")
-            
-            vid_r = requests.get(best_link, stream=True)
-            with open("downloaded_bg.mp4", "wb") as f:
-                for chunk in vid_r.iter_content(chunk_size=1024*1024): f.write(chunk)
-            
-            if os.path.getsize("downloaded_bg.mp4") < 1000:
-                print("🚨 ERROR: Downloaded file is empty!")
-                sys.exit(1)
-                
-            return "downloaded_bg.mp4"
+        video_file = create_video()
+        if video_file:
+            with open(video_file, 'rb') as v:
+                bot.send_video(message.chat.id, v, caption="İşte videon hazır! 🎬")
         else:
-            print("🚨 ERROR: No videos found for this topic!")
-            sys.exit(1)
+            bot.reply_to(message, "Video oluşturulurken bir hata oldu.")
     except Exception as e:
-        print(f"🚨 DOWNLOAD ERROR: {e}")
-        sys.exit(1)
+        bot.reply_to(message, f"Hata oluştu: {str(e)}")
 
-def main():
-    story_data = random.choice(STORIES)
-    print(f"🎬 PROCESSING: {story_data['title']}")
-    
-    # 1. Voice
-    asyncio.run(generate_pro_voice(story_data['text']))
-    voice_audio = AudioFileClip("voice.mp3")
-    
-    # 2. Video Download
-    video_path = download_video_from_pexels(story_data["search_query"])
-    
-    print("🎞️ Editing Video (MoviePy)...")
-    background = VideoFileClip(video_path)
-    
-    if background.w > background.h:
-        background = background.crop(x_center=background.w/2, width=background.h*9/16, height=background.h)
-    background = background.resize(height=1920).crop(x_center=background.w/2, width=1080, height=1920)
-    background = background.fx(vfx.loop, duration=voice_audio.duration + 2)
-    
-    video = background.set_duration(voice_audio.duration + 1.5).set_audio(voice_audio)
-    
-    # English Titles
-    title_clip = TextClip(story_data['title'], fontsize=70, color='white', bg_color='#cc0000', 
-                          size=(900, None), method='caption', align='center')
-    title_clip = title_clip.set_pos(('center', 150)).set_duration(video.duration)
-    
-    output_file = "shorts_video.mp4"
-    print("⚙️ Rendering...")
-    final_video = CompositeVideoClip([video, title_clip])
-    final_video.write_videofile(output_file, fps=24, bitrate="5000k", codec="libx264", audio_codec="aac")
-    
-    time.sleep(5)
-    
-    if not os.path.exists(output_file):
-        print("🚨 ERROR: Render failed, file not found!")
-        sys.exit(1)
-        
-    print(f"✅ Video created successfully!")
-    
-    # 3. Upload to YouTube (English Metadata)
-    print("🚀 Uploading to YouTube...")
-    try:
-        creds = get_credentials()
-        youtube = build('youtube', 'v3', credentials=creds)
-        
-        request = youtube.videos().insert(
-            part="snippet,status",
-            body={
-                "snippet": {
-                    "title": f"{story_data['title']} #shorts",
-                    "description": f"{story_data['text']}\n\nSubscribe for more mysteries: @GolgeArsiviTR\n\n#shorts #horror #facts #mystery #{story_data['topic'].lower()}",
-                    "categoryId": "27" # Education
-                },
-                "status": {
-                    "privacyStatus": "public", 
-                    "selfDeclaredMadeForKids": False
-                }
-            },
-            media_body=MediaFileUpload(output_file)
-        )
-        response = request.execute()
-        print(f"🎉 SUCCESS! Video ID: {response['id']}")
-        print(f"🔗 Link: https://youtube.com/shorts/{response['id']}")
-        
-    except Exception as e:
-        print(f"🚨 UPLOAD ERROR: {e}")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
+print("Bot çalışıyor...")
+bot.polling()
