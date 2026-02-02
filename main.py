@@ -1,23 +1,23 @@
 import os
 import telebot
 import shutil
-
-# --- KRİTİK YAMA: ImageMagick'i Otomatik Bul ---
-# Sistemde 'convert' veya 'magick' komutunu arar ve bulduğunu kullanır.
-magick_path = shutil.which("convert") or shutil.which("magick")
 from moviepy.config import change_settings
-if magick_path:
-    change_settings({"IMAGEMAGICK_BINARY": magick_path})
-else:
-    print("⚠️ UYARI: ImageMagick bulunamadı! Altyazılar çalışmayabilir.")
 
-# --- PILLOW YAMASI (Eski ANTIALIAS Hatası İçin) ---
+# --- KRİTİK DÜZELTME: ImageMagick v7 Uyumu ---
+# Railway 'magick' komutunu kullanıyor, biz de onu seçiyoruz.
+if shutil.which("magick"):
+    change_settings({"IMAGEMAGICK_BINARY": "magick"})
+elif shutil.which("convert"):
+    change_settings({"IMAGEMAGICK_BINARY": "convert"})
+else:
+    print("⚠️ DİKKAT: ImageMagick bulunamadı. nixpacks.toml dosyasını kontrol et.")
+
+# --- PILLOW YAMASI ---
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
 import requests
-import json
 import random
 import asyncio
 import edge_tts
@@ -71,10 +71,9 @@ def create_video():
         audio = AudioFileClip("voiceover.mp3")
         video = VideoFileClip(video_path).subclip(0, audio.duration)
         
-        # RAM TASARRUFU: Boyut küçültme (60 saniye videoyu kurtaracak hamle bu!)
+        # RAM TASARRUFU: Boyut küçültme
         if video.h > 960: video = video.resize(height=960)
         
-        # 9:16 Kırpma
         w, h = video.size
         target_ratio = 9/16
         if w / h > target_ratio:
@@ -83,20 +82,15 @@ def create_video():
         
         video = video.set_audio(audio)
         
-        # 4. ALTYAZI
-        if magick_path: # Sadece araç yüklüyse dene
-            try:
-                # Linux uyumlu font: DejaVu-Sans
-                txt_clip = TextClip(TEXT, fontsize=40, color='white', font='DejaVu-Sans', size=(video.w - 40, None), method='caption')
-                txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
-                final_video = CompositeVideoClip([video, txt_clip])
-            except Exception as e:
-                return f"Altyazı Hatası: {str(e)}"
-        else:
-            final_video = video # Araç yoksa yazısız devam et
+        # 4. ALTYAZI (Linux Fontu + Magick Ayarı)
+        try:
+            txt_clip = TextClip(TEXT, fontsize=40, color='white', font='DejaVu-Sans', size=(video.w - 40, None), method='caption')
+            txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
+            final_video = CompositeVideoClip([video, txt_clip])
+        except Exception as e:
+            return f"Altyazı Hatası: {str(e)}"
 
         output_path = "final_short.mp4"
-        # RAM DOSTU RENDER (THREADS=1 ve ULTRAFAST)
         final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
         
         video.close()
@@ -107,14 +101,14 @@ def create_video():
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... 🛠️")
+    bot.reply_to(message, "Video hazırlanıyor... 🎬")
     result = create_video()
     
     if result and ("Hata" in result or "bulunamadı" in result):
         bot.reply_to(message, f"❌ {result}")
     elif result:
         with open(result, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption="İşlem Tamam! 🎬")
+            bot.send_video(message.chat.id, v, caption="İşte oldu! 🚀")
     else:
         bot.reply_to(message, "Bilinmeyen hata.")
 
