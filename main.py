@@ -6,8 +6,9 @@ import asyncio
 import edge_tts
 import numpy as np
 import textwrap
+import math
 from PIL import Image, ImageDraw, ImageFont 
-from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, ConcatenateVideoClip
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
@@ -21,13 +22,10 @@ if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = Image.LANCZOS
 
 # --- 1. YEDEK SENARYO DEPOSU (FALLBACK) ---
-# Eğer Google yine naz yaparsa bot bu hazır metinleri kullanacak.
 BACKUP_SCRIPTS = {
-    "horror": "Did you know that if you wake up at 3 AM out of nowhere, there is an 80% chance someone is staring at you?",
-    "psychology": "Psychology says, if you can't stop thinking about someone, it's because they were thinking about you first.",
-    "space": "Did you know that space is completely silent? No matter how loud you scream, no one can hear you die.",
-    "love": "Did you know that staring into someone's eyes for 4 minutes can make you fall in love, even with a stranger?",
-    "default": "Did you know that your brain makes decisions 7 seconds before you are even conscious of them? You are not in control."
+    "horror": "They say if you wake up at 3 AM, someone is watching you. But the scariest part isn't the eyes you feel on your back. It's the fact that when you look in the mirror, your reflection blinks a second later than you do. Try it tonight.",
+    "space": "Space is not just empty. It's silent. If you screamed in space, even if someone was right next to you, they wouldn't hear a thing. You would die in absolute, terrifying silence.",
+    "default": "Your brain makes decisions 7 seconds before you are conscious of them. So when you think you chose to watch this video, your subconscious had already decided for you. You are not in control."
 }
 
 # --- 2. FONT İNDİRİCİ ---
@@ -42,86 +40,97 @@ def download_font():
         except: pass
     return font_path
 
-# --- 3. SENARYO ÜRETİCİ (GEMINI 2.5 FLASH) ---
+# --- 3. UZUN SENARYO ÜRETİCİ (GEMINI 2.5) ---
 def get_script(topic):
-    # 1. Önce Google'ın En Yeni Modelini Dene
     ai_response = try_google_ai(topic)
-    
     if ai_response:
-        return ai_response, None # (Senaryo, Hata Yok)
+        return ai_response, None
     
-    # 2. Hata olursa YEDEK depodan seç
-    print("Google AI başarısız oldu, yedek senaryo kullanılıyor.")
-    
+    # Yedek (Uzun versiyonları seç)
     topic_lower = topic.lower()
-    if "horror" in topic_lower or "scary" in topic_lower or "korku" in topic_lower:
-        script = BACKUP_SCRIPTS["horror"]
-    elif "space" in topic_lower or "uzay" in topic_lower:
-        script = BACKUP_SCRIPTS["space"]
-    elif "psychology" in topic_lower or "psikoloji" in topic_lower:
-        script = BACKUP_SCRIPTS["psychology"]
-    elif "love" in topic_lower or "aşk" in topic_lower:
-        script = BACKUP_SCRIPTS["love"]
-    else:
-        script = BACKUP_SCRIPTS["default"]
+    if "horror" in topic_lower: script = BACKUP_SCRIPTS["horror"]
+    elif "space" in topic_lower: script = BACKUP_SCRIPTS["space"]
+    else: script = BACKUP_SCRIPTS["default"]
         
-    return script, "⚠️ Not: AI yanıt vermedi, yedek senaryo devrede."
+    return script, "⚠️ Not: AI yanıt vermedi, yedek hikaye kullanıldı."
 
 def try_google_ai(topic):
     if not GEMINI_API_KEY: return None
     
-    # İŞTE BURASI! Senin listendeki 'gemini-2.5-flash' modelini kullanıyoruz.
     model_name = "gemini-2.5-flash" 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-    
     headers = {'Content-Type': 'application/json'}
     
-    # Prompt: TikTok tarzı, kancalı, kısa ve emojisisz
+    # PROMPT GÜNCELLEMESİ: Artık 120 kelimelik HİKAYE istiyoruz.
     prompt = (
-        f"Write a viral TikTok script about '{topic}'. "
-        "Start with a mind-blowing hook like 'Did you know'. "
-        "Keep it under 35 words. "
-        "Simple English. No emojis. Just the text to be spoken."
+        f"Write a viral, scary or engaging story about '{topic}' for a YouTube Short. "
+        "It must be approximately 100 to 120 words long (approx 45-60 seconds spoken). "
+        "Do not write intro or outro. Just the story. Simple English."
     )
     
     try:
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        response = requests.post(url, headers=headers, json=payload, timeout=8)
-        
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
         if response.status_code == 200:
             return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-        else:
-            print(f"Google Hata Kodu: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"Bağlantı Hatası: {e}")
-        
+    except: pass
     return None
 
-# --- 4. ALTYAZI ÇİZERİ (SARI & BÜYÜK) ---
-def create_text_image_clip(text, duration, video_size):
+# --- 4. AKILLI ALTYAZI SİSTEMİ (PARÇALI) ---
+def create_dynamic_subtitles(text, total_duration, video_size):
     W, H = video_size
     font_path = download_font()
-    fontsize = int(W / 12) 
-    
+    fontsize = int(W / 14) # Biraz daha kibar font
     try: font = ImageFont.truetype(font_path, fontsize)
     except: font = ImageFont.load_default()
 
-    char_width = fontsize * 0.45 
-    max_chars = int((W * 0.90) / char_width)
-    wrapper = textwrap.TextWrapper(width=max_chars) 
-    word_list = wrapper.wrap(text=text)
-    caption_new = '\n'.join(word_list)
+    # 1. Metni Cümlelere Böl
+    # Metni noktalardan bölüyoruz ki anlamlı parçalar olsun
+    sentences = text.replace(".", ".|").replace("?", "?|").replace("!", "!|").split("|")
+    chunks = [s.strip() for s in sentences if s.strip()]
     
-    img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    # Eğer çok az parça varsa (nokta yoksa), kelime sayısına göre böl
+    if len(chunks) < 3:
+        words = text.split()
+        chunk_size = 15 # Her ekranda 15 kelime
+        chunks = [' '.join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
+
+    # 2. Her parçanın süresini hesapla
+    # Basit yöntem: Toplam süreyi parça sayısına bölüyoruz.
+    duration_per_chunk = total_duration / len(chunks)
     
-    bbox = draw.textbbox((0, 0), caption_new, font=font)
-    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    x_pos, y_pos = (W - text_w) / 2, (H - text_h) / 2
+    clips = []
     
-    # SARI YAZI + KALIN SİYAH ÇERÇEVE
-    draw.text((x_pos, y_pos), caption_new, font=font, fill="#FFD700", align="center", stroke_width=6, stroke_fill="black")
-    return ImageClip(np.array(img)).set_duration(duration)
+    # 3. Her parça için bir resim oluştur
+    for chunk in chunks:
+        img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        
+        # Metni ekrana sığdır
+        char_width = fontsize * 0.45 
+        max_chars = int((W * 0.85) / char_width)
+        wrapper = textwrap.TextWrapper(width=max_chars)
+        word_list = wrapper.wrap(text=chunk)
+        caption_new = '\n'.join(word_list)
+        
+        bbox = draw.textbbox((0, 0), caption_new, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        
+        # Konum: ALT ORTA (Daha profesyonel durur)
+        x_pos = (W - text_w) / 2
+        y_pos = (H * 0.75) - (text_h / 2) # Ekranın %75 aşağısı
+        
+        # Siyah "Glow" Efekti (Daha okunaklı)
+        stroke_w = 4
+        draw.text((x_pos, y_pos), caption_new, font=font, fill="#FFD700", align="center", stroke_width=stroke_w, stroke_fill="black")
+        
+        # Klibe çevir ve listeye ekle
+        clip = ImageClip(np.array(img)).set_duration(duration_per_chunk)
+        clips.append(clip)
+        
+    # Tüm parçaları birleştirip tek bir video klibi yap
+    return ConcatenateVideoClip(clips)
 
 # --- 5. DİĞER FONKSİYONLAR ---
 async def generate_voice_over(text, output_file="voiceover.mp3"):
@@ -132,12 +141,11 @@ def get_stock_footage(query, duration):
     if not PEXELS_API_KEY: return None
     headers = {"Authorization": PEXELS_API_KEY}
     
-    # Arama terimini biraz süsleyelim ki daha iyi video bulsun
     search_query = query
-    if "horror" in query.lower(): search_query = "scary dark horror"
-    if "space" in query.lower(): search_query = "galaxy stars space"
+    if "horror" in query.lower(): search_query = "scary dark horror suspense"
+    if "space" in query.lower(): search_query = "galaxy stars space universe"
     
-    url = f"https://api.pexels.com/videos/search?query={search_query}&per_page=5&orientation=portrait"
+    url = f"https://api.pexels.com/videos/search?query={search_query}&per_page=8&orientation=portrait"
     try:
         r = requests.get(url, headers=headers)
         data = r.json()
@@ -145,8 +153,13 @@ def get_stock_footage(query, duration):
         for video in data.get("videos", []):
             files = video.get("video_files", [])
             if files:
-                best_file = max(files, key=lambda x: x["width"] * x["height"])
-                video_files.append(best_file["link"])
+                # En yüksek kaliteyi değil, HD (yaklaşık 720p/1080p) olanı al (Hız için)
+                good_files = [f for f in files if f["height"] > 700]
+                if good_files:
+                    video_files.append(random.choice(good_files)["link"])
+                else:
+                    video_files.append(files[0]["link"])
+                    
         if not video_files: return None
         selected_video = random.choice(video_files)
         with open("input_video.mp4", "wb") as f:
@@ -157,15 +170,24 @@ def get_stock_footage(query, duration):
 def create_video(topic, script):
     try:
         asyncio.run(generate_voice_over(script))
-        video_path = get_stock_footage(topic, 10)
         
-        # Video bulunamazsa yedek video kullan
+        # Videoyu bul
+        video_path = get_stock_footage(topic, 10) # Süre sembolik, video looplanacak
         if not video_path: video_path = get_stock_footage("dark aesthetic", 10)
         if not video_path: return "Video bulunamadı."
 
         audio = AudioFileClip("voiceover.mp3")
-        video = VideoFileClip(video_path).subclip(0, audio.duration)
         
+        # VİDEO LOOP (Döngü)
+        # Eğer stok video ses kaydından kısaysa, videoyu başa sarıp tekrar oynatırız.
+        video_input = VideoFileClip(video_path)
+        if video_input.duration < audio.duration:
+            # Videoyu ses süresi kadar tekrar et (Loop)
+            video = video_input.loop(duration=audio.duration)
+        else:
+            video = video_input.subclip(0, audio.duration)
+        
+        # Boyutlandırma
         if video.h > 960: video = video.resize(height=960)
         w, h = video.size
         if w/h > 9/16:
@@ -174,12 +196,18 @@ def create_video(topic, script):
         
         video = video.set_audio(audio)
         
+        # ALTYAZI (DİNAMİK)
         try:
-            txt_clip = create_text_image_clip(script, video.duration, video.size)
-            final_video = CompositeVideoClip([video, txt_clip])
-        except: final_video = video
+            subtitle_clip = create_dynamic_subtitles(script, video.duration, video.size)
+            final_video = CompositeVideoClip([video, subtitle_clip])
+        except Exception as e: 
+            print(f"Altyazı hatası: {e}")
+            final_video = video
 
         final_video.write_videofile("final_short.mp4", codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
+        
+        # Temizlik (Hata almamak için close önemlidir)
+        video_input.close() 
         video.close()
         audio.close()
         return "final_short.mp4"
@@ -197,9 +225,8 @@ def handle_video_command(message):
         return
 
     topic = args[1]
-    bot.reply_to(message, f"🤖 Konu: '{topic}' işleniyor... (Model: Gemini 2.5)")
+    bot.reply_to(message, f"🎥 Konu: '{topic}'\n🧠 Gemini 2.5 hikayeyi yazıyor... (Bu işlem 1-2 dakika sürebilir)")
     
-    # SENARYOYU AL
     script, warning = get_script(topic)
     
     result = create_video(topic, script)
@@ -207,7 +234,9 @@ def handle_video_command(message):
     if result and "Hata" in result:
         bot.reply_to(message, f"❌ {result}")
     elif result:
-        caption = f"🎥 Konu: {topic}\n📝 Metin: {script}"
+        # Metin çok uzunsa mesaja sığdırma, sadece başını yaz
+        preview_text = script[:100] + "..."
+        caption = f"🎬 **Konu:** {topic}\n📜 **Hikaye:** {preview_text}"
         if warning: caption += f"\n\n{warning}"
         
         with open(result, 'rb') as v:
