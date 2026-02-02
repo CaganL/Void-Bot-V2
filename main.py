@@ -1,15 +1,20 @@
 import os
 import telebot
+import shutil
 
-# --- KRİTİK YAMA (Pillow Hatası İçin) ---
+# --- KRİTİK YAMA: ImageMagick'i Otomatik Bul ---
+# Sistemde 'convert' veya 'magick' komutunu arar ve bulduğunu kullanır.
+magick_path = shutil.which("convert") or shutil.which("magick")
+from moviepy.config import change_settings
+if magick_path:
+    change_settings({"IMAGEMAGICK_BINARY": magick_path})
+else:
+    print("⚠️ UYARI: ImageMagick bulunamadı! Altyazılar çalışmayabilir.")
+
+# --- PILLOW YAMASI (Eski ANTIALIAS Hatası İçin) ---
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-# ----------------------------------------
-
-# --- MOVIEPY AYARLARI ---
-from moviepy.config import change_settings
-change_settings({"IMAGEMAGICK_BINARY": "convert"})
 
 import requests
 import json
@@ -45,15 +50,13 @@ def get_stock_footage(query, duration):
                 best_file = max(files, key=lambda x: x["width"] * x["height"])
                 video_files.append(best_file["link"])
         
-        if not video_files:
-            return None
+        if not video_files: return None
         selected_video = random.choice(video_files)
         video_path = "input_video.mp4"
         with open(video_path, "wb") as f:
             f.write(requests.get(selected_video).content)
         return video_path
-    except:
-        return None
+    except: return None
 
 def create_video():
     try:
@@ -62,14 +65,16 @@ def create_video():
         
         # 2. Video
         video_path = get_stock_footage(TOPIC, 10)
-        if not video_path: return None
+        if not video_path: return "Video bulunamadı."
 
         # 3. Montaj
         audio = AudioFileClip("voiceover.mp3")
         video = VideoFileClip(video_path).subclip(0, audio.duration)
         
-        # RAM Dostu Küçültme
+        # RAM TASARRUFU: Boyut küçültme (60 saniye videoyu kurtaracak hamle bu!)
         if video.h > 960: video = video.resize(height=960)
+        
+        # 9:16 Kırpma
         w, h = video.size
         target_ratio = 9/16
         if w / h > target_ratio:
@@ -78,34 +83,39 @@ def create_video():
         
         video = video.set_audio(audio)
         
-        # 4. ALTYAZI (DÜZELTİLEN KISIM)
-        # font='Arial' yerine 'DejaVu-Sans' kullanıyoruz:
-        txt_clip = TextClip(TEXT, fontsize=40, color='white', font='DejaVu-Sans', size=(video.w - 40, None), method='caption')
-        txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
-        
-        final_video = CompositeVideoClip([video, txt_clip])
-        
+        # 4. ALTYAZI
+        if magick_path: # Sadece araç yüklüyse dene
+            try:
+                # Linux uyumlu font: DejaVu-Sans
+                txt_clip = TextClip(TEXT, fontsize=40, color='white', font='DejaVu-Sans', size=(video.w - 40, None), method='caption')
+                txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
+                final_video = CompositeVideoClip([video, txt_clip])
+            except Exception as e:
+                return f"Altyazı Hatası: {str(e)}"
+        else:
+            final_video = video # Araç yoksa yazısız devam et
+
         output_path = "final_short.mp4"
+        # RAM DOSTU RENDER (THREADS=1 ve ULTRAFAST)
         final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
         
         video.close()
         audio.close()
         return output_path
     except Exception as e:
-        return f"HATA: {str(e)}"
+        return f"Genel Hata: {str(e)}"
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... (Altyazı düzeltildi) 📝")
-    
+    bot.reply_to(message, "Video hazırlanıyor... 🛠️")
     result = create_video()
     
-    if result and "HATA" in result:
-        bot.reply_to(message, result)
+    if result and ("Hata" in result or "bulunamadı" in result):
+        bot.reply_to(message, f"❌ {result}")
     elif result:
         with open(result, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption="Altyazılı hali hazır! 🎬")
+            bot.send_video(message.chat.id, v, caption="İşlem Tamam! 🎬")
     else:
-        bot.reply_to(message, "Video oluşturulamadı.")
+        bot.reply_to(message, "Bilinmeyen hata.")
 
 bot.polling()
