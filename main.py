@@ -1,8 +1,7 @@
 import os
 import telebot
-# --- MOVIEPY AYARLARI (DÜZELTİLDİ) ---
+# --- MOVIEPY AYARLARI ---
 from moviepy.config import change_settings
-# Railway'de yüklü olan ImageMagick'i otomatik bulması için ayar:
 change_settings({"IMAGEMAGICK_BINARY": "convert"})
 
 import requests
@@ -18,7 +17,7 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# --- KONU VE METİN (Test İçin Sabit) ---
+# --- SABİT TEST İÇERİĞİ ---
 TOPIC = "Fear"
 TEXT = "Did you know that fear is just a chemical reaction? Your brain prepares you to fight or flight."
 
@@ -48,36 +47,62 @@ def get_stock_footage(query, duration):
     return video_path
 
 def create_video():
-    # 1. Ses Oluştur
-    asyncio.run(generate_voice_over(TEXT))
-    
-    # 2. Video İndir
-    video_path = get_stock_footage(TOPIC, 10)
-    if not video_path:
-        return None
-
-    # 3. Birleştir
-    audio = AudioFileClip("voiceover.mp3")
-    video = VideoFileClip(video_path).subclip(0, audio.duration)
-    video = video.set_audio(audio)
-    
-    # 4. Altyazı Ekle (Düzeltilmiş Ayar ile)
     try:
-        # Yazıyı videonun ortasına beyaz renkle yazar
-        txt_clip = TextClip(TEXT, fontsize=50, color='white', size=video.size, method='caption')
-        txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
-        final_video = CompositeVideoClip([video, txt_clip])
-    except Exception as e:
-        print(f"Altyazı hatası devam ediyor: {e}")
-        final_video = video # Altyazı başarısız olursa yine de videoyu oluştur
+        # 1. Ses Oluştur
+        asyncio.run(generate_voice_over(TEXT))
+        
+        # 2. Video İndir
+        video_path = get_stock_footage(TOPIC, 10)
+        if not video_path:
+            return None
 
-    output_path = "final_short.mp4"
-    final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
-    return output_path
+        # 3. Klipleri Hazırla
+        audio = AudioFileClip("voiceover.mp3")
+        
+        # --- RAM TASARRUFU 1: Videoyu Yeniden Boyutlandır ---
+        # Yüksek çözünürlüklü videoyu işlemek RAM'i bitirir. Boyutu 540p-960p civarına çekiyoruz.
+        video = VideoFileClip(video_path).subclip(0, audio.duration)
+        video = video.resize(height=960) # Dikey HD kalitesi (Hafıza dostu)
+        video = video.crop(x1=video.w/2-270, y1=0, width=540, height=960) # Tam dikey ortala
+        
+        video = video.set_audio(audio)
+        
+        # 4. Altyazı Ekle
+        try:
+            # Font boyutu ve rengi
+            txt_clip = TextClip(TEXT, fontsize=40, color='white', font='Arial', size=(500, None), method='caption')
+            txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
+            final_video = CompositeVideoClip([video, txt_clip])
+        except Exception as e:
+            print(f"Altyazı hatası: {e}")
+            final_video = video
+
+        output_path = "final_short.mp4"
+        
+        # --- RAM TASARRUFU 2: preset='ultrafast' ve threads=1 ---
+        # Bu ayarlar render işlemini hafifletir ve RAM patlamasını önler.
+        final_video.write_videofile(
+            output_path, 
+            codec="libx264", 
+            audio_codec="aac", 
+            fps=24, 
+            preset='ultrafast', 
+            threads=1
+        )
+        
+        # Temizlik
+        video.close()
+        audio.close()
+        
+        return output_path
+        
+    except Exception as e:
+        print(f"Genel Hata: {str(e)}")
+        return None
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... Lütfen yaklaşık 1-2 dakika bekle. ☕")
+    bot.reply_to(message, "Video hazırlanıyor... (RAM dostu modda) ☕")
     
     try:
         video_file = create_video()
@@ -85,9 +110,9 @@ def send_welcome(message):
             with open(video_file, 'rb') as v:
                 bot.send_video(message.chat.id, v, caption="İşte videon hazır! 🎬")
         else:
-            bot.reply_to(message, "Video oluşturulurken bir hata oldu (Video bulunamadı).")
+            bot.reply_to(message, "Video oluşturulurken bir hata oldu.")
     except Exception as e:
-        bot.reply_to(message, f"Hata oluştu: {str(e)}")
+        bot.reply_to(message, f"Hata: {str(e)}")
 
 print("Bot çalışıyor...")
 bot.polling()
