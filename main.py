@@ -39,19 +39,19 @@ def download_font():
         except: pass
     return font_path
 
-# --- 2. VİRAL SENARYO (MODEL İSMİ DÜZELTİLDİ: 1.5-flash) ---
+# --- 2. VİRAL SENARYO (GÜNCEL MODEL) ---
 def generate_script_with_ai(topic):
     if not GEMINI_API_KEY:
         return f"API Key missing for {topic}."
     
     try:
-        # HATA VEREN 'gemini-pro' YERİNE GÜNCEL MODELİ YAZDIK:
+        # GÜNCEL VE HIZLI MODEL
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         prompt = (
             f"Write a short, engaging script for a viral video about '{topic}'. "
             "Start with a hook like 'Did you know'. "
-            "Keep it under 50 words. "
+            "Keep it under 40 words. "
             "Write in simple English. No emojis."
         )
         
@@ -60,20 +60,20 @@ def generate_script_with_ai(topic):
     except Exception as e:
         return f"AI Error: {str(e)}"
 
-# --- 3. ALTYAZI ÇİZERİ (SARI RENK + SİYAH KENARLIK) ---
+# --- 3. ALTYAZI ÇİZERİ (SARI VE BÜYÜK) ---
 def create_text_image_clip(text, duration, video_size):
     W, H = video_size
     font_path = download_font()
     
-    # Font boyutu
-    fontsize = int(W / 14) 
+    # Font boyutu: Ekran genişliğinin 12'de 1'i (Büyük ve okunaklı)
+    fontsize = int(W / 12) 
     
     try: font = ImageFont.truetype(font_path, fontsize)
     except: font = ImageFont.load_default()
 
     # Metni sığdır
     char_width = fontsize * 0.45 
-    max_chars = int((W * 0.85) / char_width)
+    max_chars = int((W * 0.90) / char_width)
     wrapper = textwrap.TextWrapper(width=max_chars) 
     word_list = wrapper.wrap(text=text)
     caption_new = '\n'.join(word_list)
@@ -85,7 +85,7 @@ def create_text_image_clip(text, duration, video_size):
     text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x_pos, y_pos = (W - text_w) / 2, (H - text_h) / 2
     
-    # ESTETİK GÜNCELLEME: SARI YAZI (#FFD700) + SİYAH KALIN ÇERÇEVE
+    # SARI YAZI + KALIN SİYAH KENARLIK
     draw.text((x_pos, y_pos), caption_new, font=font, fill="#FFD700", align="center", stroke_width=6, stroke_fill="black")
     
     return ImageClip(np.array(img)).set_duration(duration)
@@ -122,10 +122,10 @@ def create_video(topic, ai_text):
     try:
         asyncio.run(generate_voice_over(ai_text))
         
-        # Videoyu Pexels'ten konuya göre bul
+        # Videoyu bulamazsa yedek olarak "abstract" ara
         video_path = get_stock_footage(topic, 10)
         if not video_path: 
-            video_path = get_stock_footage("dark abstract", 10)
+            video_path = get_stock_footage("mystery", 10)
             if not video_path: return "Video bulunamadı."
 
         audio = AudioFileClip("voiceover.mp3")
@@ -170,7 +170,6 @@ def handle_video_command(message):
     
     ai_script = generate_script_with_ai(topic)
     
-    # Eğer AI hata verirse kullanıcıya söyle
     if "AI Error" in ai_script:
         bot.reply_to(message, f"⚠️ {ai_script}")
         return
