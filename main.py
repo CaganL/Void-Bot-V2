@@ -12,7 +12,7 @@ import asyncio
 import edge_tts
 import numpy as np
 import textwrap
-import google.generativeai as genai
+# google.generativeai kütüphanesini sildik, artık Requests ile bağlanacağız.
 from PIL import ImageDraw, ImageFont 
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
 
@@ -22,10 +22,6 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-
-# --- YAPAY ZEKA AYARLARI ---
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 # --- 1. FONT İNDİRİCİ ---
 def download_font():
@@ -39,49 +35,53 @@ def download_font():
         except: pass
     return font_path
 
-# --- 2. VİRAL SENARYO (GARANTİLİ MODEL SEÇİCİ) ---
+# --- 2. VİRAL SENARYO (KÜTÜPHANESİZ - DİREKT BAĞLANTI) ---
 def generate_script_with_ai(topic):
     if not GEMINI_API_KEY:
         return f"API Key missing for {topic}."
     
-    # Denenecek Modeller Listesi (Sırayla dener)
-    models_to_try = ['gemini-1.5-flash', 'gemini-pro', 'gemini-1.0-pro']
+    # Kütüphane yerine direkt Google'ın adresine istek atıyoruz.
+    # Bu yöntem sunucudaki sürümden etkilenmez.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    prompt = (
+    headers = {'Content-Type': 'application/json'}
+    
+    prompt_text = (
         f"Write a short, engaging script for a viral video about '{topic}'. "
         "Start with a hook like 'Did you know'. "
         "Keep it under 40 words. "
         "Write in simple English. No emojis."
     )
-
-    last_error = ""
-
-    for model_name in models_to_try:
-        try:
-            # Modeli seç ve dene
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            return response.text.strip() # Başarılıysa hemen döndür
-        except Exception as e:
-            # Hata verirse kaydet ve bir sonraki modele geç
-            last_error = str(e)
-            continue
     
-    # Hiçbiri çalışmazsa bunu döndür
-    return f"AI Error (All models failed): {last_error}"
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt_text}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Gelen cevabın içinden metni ayıklıyoruz
+            return data['candidates'][0]['content']['parts'][0]['text'].strip()
+        else:
+            return f"AI Error: Google refused connection ({response.status_code})"
+            
+    except Exception as e:
+        return f"AI Error: {str(e)}"
 
 # --- 3. ALTYAZI ÇİZERİ (SARI VE BÜYÜK) ---
 def create_text_image_clip(text, duration, video_size):
     W, H = video_size
     font_path = download_font()
     
-    # Font boyutu
     fontsize = int(W / 12) 
     
     try: font = ImageFont.truetype(font_path, fontsize)
     except: font = ImageFont.load_default()
 
-    # Metni sığdır
     char_width = fontsize * 0.45 
     max_chars = int((W * 0.90) / char_width)
     wrapper = textwrap.TextWrapper(width=max_chars) 
@@ -95,7 +95,6 @@ def create_text_image_clip(text, duration, video_size):
     text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x_pos, y_pos = (W - text_w) / 2, (H - text_h) / 2
     
-    # SARI YAZI + KALIN SİYAH KENARLIK
     draw.text((x_pos, y_pos), caption_new, font=font, fill="#FFD700", align="center", stroke_width=6, stroke_fill="black")
     
     return ImageClip(np.array(img)).set_duration(duration)
@@ -132,7 +131,6 @@ def create_video(topic, ai_text):
     try:
         asyncio.run(generate_voice_over(ai_text))
         
-        # Videoyu bulamazsa yedek olarak "mystery" ara
         video_path = get_stock_footage(topic, 10)
         if not video_path: 
             video_path = get_stock_footage("mystery", 10)
@@ -180,7 +178,6 @@ def handle_video_command(message):
     
     ai_script = generate_script_with_ai(topic)
     
-    # Hata varsa mesaj at, yoksa videoya devam et
     if "AI Error" in ai_script:
         bot.reply_to(message, f"⚠️ {ai_script}")
         return
