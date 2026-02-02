@@ -1,12 +1,19 @@
 import os
 import telebot
+
+# --- KRİTİK YAMA (ANTIALIAS FIX) ---
+# En tepeye ekledim ki MoviePy hata vermesin
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+
 import requests
 import random
 import asyncio
 import edge_tts
 import numpy as np
 import textwrap
-from PIL import Image, ImageDraw, ImageFont
+from PIL import ImageDraw, ImageFont # PIL.Image zaten yukarıda import edildi
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
 
 # --- AYARLAR ---
@@ -23,42 +30,41 @@ TEXT = "Did you know that fear is just a chemical reaction? Your brain prepares 
 def create_text_image_clip(text, duration, video_size, fontsize=40):
     W, H = video_size
     
-    # 1. Şeffaf bir resim oluştur (Tuval)
-    img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    # 1. Şeffaf Tuval
+    img = PIL.Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # 2. Font ayarla (Sistem fontu bulamazsa varsayılanı kullanır)
+    # 2. Font Ayarı
     try:
-        # Linux için yaygın font
         font = ImageFont.truetype("DejaVuSans.ttf", fontsize)
     except:
         try:
-            # Alternatif font
             font = ImageFont.truetype("arial.ttf", fontsize)
         except:
-            # Hiçbiri yoksa varsayılan (biraz çirkin olabilir ama çalışır)
             font = ImageFont.load_default()
     
-    # 3. Metni ekrana sığacak şekilde parçala (Wrap)
-    # Ortalama her satıra 20-25 karakter sığar (fontsize'a göre değişir)
-    char_width = 20 
-    wrapper = textwrap.TextWrapper(width=int(W / char_width)) 
+    # 3. Metin Kaydırma (Text Wrap)
+    # Genişliğe göre satır başı yap
+    char_width = fontsize * 0.5 
+    max_chars = int(W / char_width)
+    wrapper = textwrap.TextWrapper(width=max_chars) 
     word_list = wrapper.wrap(text=text)
     caption_new = '\n'.join(word_list)
     
-    # 4. Yazıyı ortala ve çiz
-    # Metnin kaplayacağı alanı hesapla (kabaca)
-    text_w, text_h = draw.textbbox((0, 0), caption_new, font=font)[2:]
+    # 4. Yazıyı Çiz
+    # Yazının kapladığı alanı hesapla
+    bbox = draw.textbbox((0, 0), caption_new, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
     
     x_pos = (W - text_w) / 2
     y_pos = (H - text_h) / 2
     
-    # Siyah gölge (okunabilirlik için)
+    # Siyah gölge + Beyaz yazı
     draw.text((x_pos+2, y_pos+2), caption_new, font=font, fill="black", align="center")
-    # Beyaz yazı
     draw.text((x_pos, y_pos), caption_new, font=font, fill="white", align="center")
     
-    # 5. Resmi MoviePy klibine çevir
+    # 5. Klibe Çevir
     return ImageClip(np.array(img)).set_duration(duration)
 
 async def generate_voice_over(text, output_file="voiceover.mp3"):
@@ -110,9 +116,8 @@ def create_video():
         
         video = video.set_audio(audio)
         
-        # 4. ALTYAZI (YENİ GÜVENLİ YÖNTEM)
+        # 4. ALTYAZI (Yeni Güvenli Yöntem)
         try:
-            # Artık TextClip yok, özel fonksiyonumuz var
             txt_clip = create_text_image_clip(TEXT, video.duration, video.size)
             final_video = CompositeVideoClip([video, txt_clip])
         except Exception as e:
@@ -130,14 +135,14 @@ def create_video():
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... (ImageMagick'siz Özel Mod) 🎨")
+    bot.reply_to(message, "Video hazırlanıyor... (Final Fix) 🛠️")
     result = create_video()
     
     if result and ("Hata" in result or "bulunamadı" in result):
         bot.reply_to(message, f"❌ {result}")
     elif result:
         with open(result, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption="Zafer bizimdir! 🎬")
+            bot.send_video(message.chat.id, v, caption="İşte Altyazılı Video! 🎉")
     else:
         bot.reply_to(message, "Bilinmeyen hata.")
 
