@@ -1,12 +1,11 @@
 import os
 import telebot
 
-# --- KRİTİK YAMA (ANTIALIAS FİX) ---
-# Pillow 10+ sürümünde kaldırılan komutu geri getiriyoruz:
+# --- KRİTİK YAMA (Pillow Hatası İçin) ---
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-# -----------------------------------
+# ----------------------------------------
 
 # --- MOVIEPY AYARLARI ---
 from moviepy.config import change_settings
@@ -25,7 +24,7 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# --- SABİT TEST İÇERİĞİ ---
+# --- İÇERİK ---
 TOPIC = "Fear"
 TEXT = "Did you know that fear is just a chemical reaction? Your brain prepares you to fight or flight."
 
@@ -34,92 +33,79 @@ async def generate_voice_over(text, output_file="voiceover.mp3"):
     await communicate.save(output_file)
 
 def get_stock_footage(query, duration):
-    if not PEXELS_API_KEY:
-        raise Exception("PEXELS_API_KEY bulunamadı! Railway Variables ayarını kontrol et.")
-        
     headers = {"Authorization": PEXELS_API_KEY}
     url = f"https://api.pexels.com/videos/search?query={query}&per_page=5&orientation=portrait"
-    r = requests.get(url, headers=headers)
-    
-    if r.status_code != 200:
-        raise Exception(f"Pexels Hatası: {r.status_code} - {r.text}")
+    try:
+        r = requests.get(url, headers=headers)
+        data = r.json()
+        video_files = []
+        for video in data.get("videos", []):
+            files = video.get("video_files", [])
+            if files:
+                best_file = max(files, key=lambda x: x["width"] * x["height"])
+                video_files.append(best_file["link"])
         
-    data = r.json()
-    video_files = []
-    for video in data.get("videos", []):
-        files = video.get("video_files", [])
-        if files:
-            best_file = max(files, key=lambda x: x["width"] * x["height"])
-            video_files.append(best_file["link"])
-    
-    if not video_files:
-        raise Exception("Pexels video bulamadı. Konu veya API ile ilgili sorun olabilir.")
-    
-    selected_video = random.choice(video_files)
-    video_path = "input_video.mp4"
-    with open(video_path, "wb") as f:
-        f.write(requests.get(selected_video).content)
-    return video_path
+        if not video_files:
+            return None
+        selected_video = random.choice(video_files)
+        video_path = "input_video.mp4"
+        with open(video_path, "wb") as f:
+            f.write(requests.get(selected_video).content)
+        return video_path
+    except:
+        return None
 
 def create_video():
-    # 1. Ses Oluştur
-    asyncio.run(generate_voice_over(TEXT))
-    
-    # 2. Video İndir
-    video_path = get_stock_footage(TOPIC, 10)
-
-    # 3. Klipleri Hazırla
-    audio = AudioFileClip("voiceover.mp3")
-    
-    # RAM Tasarrufu: Videoyu küçült (960p)
-    video = VideoFileClip(video_path).subclip(0, audio.duration)
-    if video.h > 960:
-        video = video.resize(height=960) 
-    
-    # 9:16 Kırpma
-    w, h = video.size
-    target_ratio = 9/16
-    if w / h > target_ratio:
-        new_w = h * target_ratio
-        video = video.crop(x1=(w/2 - new_w/2), width=new_w, height=h)
-    
-    video = video.set_audio(audio)
-    
-    # 4. Altyazı Ekle
     try:
-        txt_clip = TextClip(TEXT, fontsize=40, color='white', size=(video.w - 40, None), method='caption')
-        txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
-        final_video = CompositeVideoClip([video, txt_clip])
-    except Exception as e:
-        print(f"Altyazı hatası: {e}")
-        final_video = video
+        # 1. Ses
+        asyncio.run(generate_voice_over(TEXT))
+        
+        # 2. Video
+        video_path = get_stock_footage(TOPIC, 10)
+        if not video_path: return None
 
-    output_path = "final_short.mp4"
-    
-    # Render (Hızlı Mod)
-    final_video.write_videofile(
-        output_path, 
-        codec="libx264", 
-        audio_codec="aac", 
-        fps=24, 
-        preset='ultrafast', 
-        threads=1
-    )
-    
-    video.close()
-    audio.close()
-    return output_path
+        # 3. Montaj
+        audio = AudioFileClip("voiceover.mp3")
+        video = VideoFileClip(video_path).subclip(0, audio.duration)
+        
+        # RAM Dostu Küçültme
+        if video.h > 960: video = video.resize(height=960)
+        w, h = video.size
+        target_ratio = 9/16
+        if w / h > target_ratio:
+            new_w = h * target_ratio
+            video = video.crop(x1=(w/2 - new_w/2), width=new_w, height=h)
+        
+        video = video.set_audio(audio)
+        
+        # 4. ALTYAZI (DÜZELTİLEN KISIM)
+        # font='Arial' yerine 'DejaVu-Sans' kullanıyoruz:
+        txt_clip = TextClip(TEXT, fontsize=40, color='white', font='DejaVu-Sans', size=(video.w - 40, None), method='caption')
+        txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
+        
+        final_video = CompositeVideoClip([video, txt_clip])
+        
+        output_path = "final_short.mp4"
+        final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
+        
+        video.close()
+        audio.close()
+        return output_path
+    except Exception as e:
+        return f"HATA: {str(e)}"
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... (Yama yüklendi) 🩹")
+    bot.reply_to(message, "Video hazırlanıyor... (Altyazı düzeltildi) 📝")
     
-    try:
-        video_file = create_video()
-        with open(video_file, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption="İşte videon hazır! 🎬")
-    except Exception as e:
-        bot.reply_to(message, f"❌ HATA DETAYI:\n{str(e)}")
+    result = create_video()
+    
+    if result and "HATA" in result:
+        bot.reply_to(message, result)
+    elif result:
+        with open(result, 'rb') as v:
+            bot.send_video(message.chat.id, v, caption="Altyazılı hali hazır! 🎬")
+    else:
+        bot.reply_to(message, "Video oluşturulamadı.")
 
-print("Bot çalışıyor...")
 bot.polling()
