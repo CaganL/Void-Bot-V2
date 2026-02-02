@@ -2,7 +2,6 @@ import os
 import telebot
 
 # --- KRİTİK YAMA (ANTIALIAS FIX) ---
-# En tepeye ekledim ki MoviePy hata vermesin
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
@@ -26,45 +25,63 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 TOPIC = "Fear"
 TEXT = "Did you know that fear is just a chemical reaction? Your brain prepares you to fight or flight."
 
-# --- ÖZEL FONKSİYON: ImageMagick Olmadan Yazı Yazma ---
-def create_text_image_clip(text, duration, video_size, fontsize=40):
+# --- YENİ ÖZELLİK: HAVALI FONT İNDİRİCİ ---
+def download_font():
+    font_path = "Oswald-Bold.ttf"
+    if not os.path.exists(font_path):
+        url = "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf"
+        try:
+            r = requests.get(url)
+            with open(font_path, "wb") as f:
+                f.write(r.content)
+            print("Font başarıyla indirildi!")
+        except:
+            print("Font indirilemedi, varsayılan kullanılacak.")
+    return font_path
+
+# --- ÖZEL FONKSİYON: Kaliteli ve Büyük Yazı Yazma ---
+def create_text_image_clip(text, duration, video_size):
     W, H = video_size
     
-    # 1. Şeffaf Tuval
-    img = PIL.Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    # 1. Fontu Hazırla (Önce indir)
+    font_path = download_font()
     
-    # 2. Font Ayarı
+    # Font Büyüklüğü: Videonun genişliğine göre ayarla (Daha büyük!)
+    fontsize = int(W / 12) # Eskiden 40 sabitti, şimdi ekrana göre büyüyecek (yaklaşık 80-90px)
+    
     try:
-        font = ImageFont.truetype("DejaVuSans.ttf", fontsize)
+        font = ImageFont.truetype(font_path, fontsize)
     except:
-        try:
-            font = ImageFont.truetype("arial.ttf", fontsize)
-        except:
-            font = ImageFont.load_default()
-    
-    # 3. Metin Kaydırma (Text Wrap)
-    # Genişliğe göre satır başı yap
-    char_width = fontsize * 0.5 
-    max_chars = int(W / char_width)
+        font = ImageFont.load_default()
+
+    # 2. Metni Kaydırma (Text Wrap)
+    # Her satıra sığacak karakter sayısını hesapla
+    # Oswald fontu biraz dar olduğu için çarpanı ayarladık
+    char_width = fontsize * 0.45 
+    max_chars = int((W * 0.9) / char_width) # Ekranın %90'ını doldur
     wrapper = textwrap.TextWrapper(width=max_chars) 
     word_list = wrapper.wrap(text=text)
     caption_new = '\n'.join(word_list)
     
-    # 4. Yazıyı Çiz
-    # Yazının kapladığı alanı hesapla
+    # 3. Şeffaf Tuval
+    img = PIL.Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    # 4. Yazıyı Ortalama Hesabı
     bbox = draw.textbbox((0, 0), caption_new, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
     
     x_pos = (W - text_w) / 2
-    y_pos = (H - text_h) / 2
+    y_pos = (H - text_h) / 2 # Tam ortala
+    # İstersen biraz aşağı çekmek için: y_pos = H * 0.7 
     
-    # Siyah gölge + Beyaz yazı
-    draw.text((x_pos+2, y_pos+2), caption_new, font=font, fill="black", align="center")
-    draw.text((x_pos, y_pos), caption_new, font=font, fill="white", align="center")
+    # 5. ÇİZİM: Kalın Siyah Kenarlık + Beyaz Yazı
+    # stroke_width=4 ile kalın siyah çerçeve ekliyoruz (Okunabilirlik için şart)
+    draw.text((x_pos, y_pos), caption_new, font=font, fill="white", align="center", 
+              stroke_width=5, stroke_fill="black")
     
-    # 5. Klibe Çevir
+    # 6. Klibe Çevir
     return ImageClip(np.array(img)).set_duration(duration)
 
 async def generate_voice_over(text, output_file="voiceover.mp3"):
@@ -116,7 +133,7 @@ def create_video():
         
         video = video.set_audio(audio)
         
-        # 4. ALTYAZI (Yeni Güvenli Yöntem)
+        # 4. ALTYAZI (Güncellenmiş Kalite)
         try:
             txt_clip = create_text_image_clip(TEXT, video.duration, video.size)
             final_video = CompositeVideoClip([video, txt_clip])
@@ -135,14 +152,14 @@ def create_video():
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... (Final Fix) 🛠️")
+    bot.reply_to(message, "Video hazırlanıyor... (HD Altyazı Modu) 💎")
     result = create_video()
     
     if result and ("Hata" in result or "bulunamadı" in result):
         bot.reply_to(message, f"❌ {result}")
     elif result:
         with open(result, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption="İşte Altyazılı Video! 🎉")
+            bot.send_video(message.chat.id, v, caption="İşte Kalite! 🎬")
     else:
         bot.reply_to(message, "Bilinmeyen hata.")
 
