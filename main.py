@@ -26,9 +26,16 @@ async def generate_voice_over(text, output_file="voiceover.mp3"):
     await communicate.save(output_file)
 
 def get_stock_footage(query, duration):
+    if not PEXELS_API_KEY:
+        raise Exception("PEXELS_API_KEY bulunamadı! Railway Variables ayarını kontrol et.")
+        
     headers = {"Authorization": PEXELS_API_KEY}
     url = f"https://api.pexels.com/videos/search?query={query}&per_page=5&orientation=portrait"
     r = requests.get(url, headers=headers)
+    
+    if r.status_code != 200:
+        raise Exception(f"Pexels Hatası: {r.status_code} - {r.text}")
+        
     data = r.json()
     video_files = []
     for video in data.get("videos", []):
@@ -38,7 +45,7 @@ def get_stock_footage(query, duration):
             video_files.append(best_file["link"])
     
     if not video_files:
-        return None
+        raise Exception("Pexels video bulamadı. Konu veya API ile ilgili sorun olabilir.")
     
     selected_video = random.choice(video_files)
     video_path = "input_video.mp4"
@@ -47,72 +54,67 @@ def get_stock_footage(query, duration):
     return video_path
 
 def create_video():
+    # 1. Ses Oluştur
+    asyncio.run(generate_voice_over(TEXT))
+    
+    # 2. Video İndir
+    video_path = get_stock_footage(TOPIC, 10)
+
+    # 3. Klipleri Hazırla
+    audio = AudioFileClip("voiceover.mp3")
+    
+    # RAM Tasarrufu: Videoyu küçült
+    video = VideoFileClip(video_path).subclip(0, audio.duration)
+    # Hedef yükseklik 960 (Dikey HD'den biraz düşük, hafıza dostu)
+    if video.h > 960:
+        video = video.resize(height=960) 
+    
+    # Kırpma (Crop) işlemi - 9:16 formatı için
+    w, h = video.size
+    target_ratio = 9/16
+    if w / h > target_ratio:
+        # Video çok geniş, yanlardan kırp
+        new_w = h * target_ratio
+        video = video.crop(x1=(w/2 - new_w/2), width=new_w, height=h)
+    
+    video = video.set_audio(audio)
+    
+    # 4. Altyazı Ekle
     try:
-        # 1. Ses Oluştur
-        asyncio.run(generate_voice_over(TEXT))
-        
-        # 2. Video İndir
-        video_path = get_stock_footage(TOPIC, 10)
-        if not video_path:
-            return None
-
-        # 3. Klipleri Hazırla
-        audio = AudioFileClip("voiceover.mp3")
-        
-        # --- RAM TASARRUFU 1: Videoyu Yeniden Boyutlandır ---
-        # Yüksek çözünürlüklü videoyu işlemek RAM'i bitirir. Boyutu 540p-960p civarına çekiyoruz.
-        video = VideoFileClip(video_path).subclip(0, audio.duration)
-        video = video.resize(height=960) # Dikey HD kalitesi (Hafıza dostu)
-        video = video.crop(x1=video.w/2-270, y1=0, width=540, height=960) # Tam dikey ortala
-        
-        video = video.set_audio(audio)
-        
-        # 4. Altyazı Ekle
-        try:
-            # Font boyutu ve rengi
-            txt_clip = TextClip(TEXT, fontsize=40, color='white', font='Arial', size=(500, None), method='caption')
-            txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
-            final_video = CompositeVideoClip([video, txt_clip])
-        except Exception as e:
-            print(f"Altyazı hatası: {e}")
-            final_video = video
-
-        output_path = "final_short.mp4"
-        
-        # --- RAM TASARRUFU 2: preset='ultrafast' ve threads=1 ---
-        # Bu ayarlar render işlemini hafifletir ve RAM patlamasını önler.
-        final_video.write_videofile(
-            output_path, 
-            codec="libx264", 
-            audio_codec="aac", 
-            fps=24, 
-            preset='ultrafast', 
-            threads=1
-        )
-        
-        # Temizlik
-        video.close()
-        audio.close()
-        
-        return output_path
-        
+        txt_clip = TextClip(TEXT, fontsize=40, color='white', size=(video.w - 40, None), method='caption')
+        txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
+        final_video = CompositeVideoClip([video, txt_clip])
     except Exception as e:
-        print(f"Genel Hata: {str(e)}")
-        return None
+        # Altyazı hatası olursa videosuz devam et
+        final_video = video
+
+    output_path = "final_short.mp4"
+    
+    # Render (Ultrafast + Threads 1 = RAM Dostu)
+    final_video.write_videofile(
+        output_path, 
+        codec="libx264", 
+        audio_codec="aac", 
+        fps=24, 
+        preset='ultrafast', 
+        threads=1
+    )
+    
+    video.close()
+    audio.close()
+    return output_path
 
 @bot.message_handler(commands=['start', 'video'])
 def send_welcome(message):
-    bot.reply_to(message, "Video hazırlanıyor... (RAM dostu modda) ☕")
+    bot.reply_to(message, "Video hazırlanıyor... (Debug Modu Açık) 🐞")
     
     try:
         video_file = create_video()
-        if video_file:
-            with open(video_file, 'rb') as v:
-                bot.send_video(message.chat.id, v, caption="İşte videon hazır! 🎬")
-        else:
-            bot.reply_to(message, "Video oluşturulurken bir hata oldu.")
+        with open(video_file, 'rb') as v:
+            bot.send_video(message.chat.id, v, caption="İşte videon hazır! 🎬")
     except Exception as e:
-        bot.reply_to(message, f"Hata: {str(e)}")
+        # HATAYI BURADA YAKALAYIP SANA GÖNDERECEK
+        bot.reply_to(message, f"❌ HATA DETAYI:\n{str(e)}")
 
 print("Bot çalışıyor...")
 bot.polling()
