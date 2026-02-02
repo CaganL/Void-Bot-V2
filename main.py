@@ -1,196 +1,42 @@
 import os
 import telebot
-import requests
-import random
-import asyncio
-import edge_tts
-import numpy as np
-import textwrap
-from PIL import Image, ImageDraw, ImageFont 
-from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
+import google.generativeai as genai
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
-PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# --- KRİTİK YAMA (ANTIALIAS FIX) ---
-if not hasattr(Image, 'ANTIALIAS'):
-    Image.ANTIALIAS = Image.LANCZOS
-
-# --- 1. YEDEK SENARYO DEPOSU (FALLBACK) ---
-# Google çalışmazsa bot buradan senaryo seçecek.
-BACKUP_SCRIPTS = {
-    "horror": "Did you know that if you wake up at 3 AM out of nowhere, there is an 80% chance someone is staring at you?",
-    "psychology": "Psychology says, if you can't stop thinking about someone, it's because they were thinking about you first.",
-    "space": "Did you know that space is completely silent? No matter how loud you scream, no one can hear you die.",
-    "love": "Did you know that staring into someone's eyes for 4 minutes can make you fall in love, even with a stranger?",
-    "default": "Did you know that your brain makes decisions 7 seconds before you are even conscious of them? You are not in control."
-}
-
-# --- 2. FONT İNDİRİCİ ---
-def download_font():
-    font_path = "Oswald-Bold.ttf"
-    if not os.path.exists(font_path):
-        url = "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf"
-        try:
-            r = requests.get(url)
-            with open(font_path, "wb") as f:
-                f.write(r.content)
-        except: pass
-    return font_path
-
-# --- 3. SENARYO ÜRETİCİ (HATA KORUMALI) ---
-def get_script(topic):
-    # 1. Önce Google'ı dene
-    ai_response = try_google_ai(topic)
-    
-    if ai_response:
-        return ai_response, None # (Senaryo, Hata Yok)
-    
-    # 2. Google bozuksa YEDEK depodan seç
-    print("Google AI başarısız oldu, yedek senaryo kullanılıyor.")
-    
-    # Konuya uygun yedeği bul
-    topic_lower = topic.lower()
-    if "horror" in topic_lower or "scary" in topic_lower or "korku" in topic_lower:
-        script = BACKUP_SCRIPTS["horror"]
-    elif "space" in topic_lower or "uzay" in topic_lower:
-        script = BACKUP_SCRIPTS["space"]
-    elif "psychology" in topic_lower or "psikoloji" in topic_lower:
-        script = BACKUP_SCRIPTS["psychology"]
-    elif "love" in topic_lower or "aşk" in topic_lower:
-        script = BACKUP_SCRIPTS["love"]
-    else:
-        script = BACKUP_SCRIPTS["default"]
-        
-    return script, "⚠️ Not: Google AI yanıt vermedi (404), yedek senaryo kullanıldı."
-
-def try_google_ai(topic):
-    if not GEMINI_API_KEY: return None
-    
-    # Farklı bir adres deniyoruz (v1beta yerine v1)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    headers = {'Content-Type': 'application/json'}
-    prompt = f"Write a one-sentence shocking fact about '{topic}' starting with 'Did you know'. Under 30 words. English."
-    
-    try:
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        response = requests.post(url, headers=headers, json=payload, timeout=5)
-        
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-    except:
-        pass
-    return None
-
-# --- 4. ALTYAZI ÇİZERİ ---
-def create_text_image_clip(text, duration, video_size):
-    W, H = video_size
-    font_path = download_font()
-    fontsize = int(W / 12) 
-    
-    try: font = ImageFont.truetype(font_path, fontsize)
-    except: font = ImageFont.load_default()
-
-    char_width = fontsize * 0.45 
-    max_chars = int((W * 0.90) / char_width)
-    wrapper = textwrap.TextWrapper(width=max_chars) 
-    word_list = wrapper.wrap(text=text)
-    caption_new = '\n'.join(word_list)
-    
-    img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    
-    bbox = draw.textbbox((0, 0), caption_new, font=font)
-    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    x_pos, y_pos = (W - text_w) / 2, (H - text_h) / 2
-    
-    draw.text((x_pos, y_pos), caption_new, font=font, fill="#FFD700", align="center", stroke_width=6, stroke_fill="black")
-    return ImageClip(np.array(img)).set_duration(duration)
-
-# --- 5. DİĞER FONKSİYONLAR ---
-async def generate_voice_over(text, output_file="voiceover.mp3"):
-    communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
-    await communicate.save(output_file)
-
-def get_stock_footage(query, duration):
-    if not PEXELS_API_KEY: return None
-    headers = {"Authorization": PEXELS_API_KEY}
-    url = f"https://api.pexels.com/videos/search?query={query}&per_page=5&orientation=portrait"
-    try:
-        r = requests.get(url, headers=headers)
-        data = r.json()
-        video_files = []
-        for video in data.get("videos", []):
-            files = video.get("video_files", [])
-            if files:
-                best_file = max(files, key=lambda x: x["width"] * x["height"])
-                video_files.append(best_file["link"])
-        if not video_files: return None
-        selected_video = random.choice(video_files)
-        with open("input_video.mp4", "wb") as f:
-            f.write(requests.get(selected_video).content)
-        return "input_video.mp4"
-    except: return None
-
-def create_video(topic, script):
-    try:
-        asyncio.run(generate_voice_over(script))
-        video_path = get_stock_footage(topic, 10)
-        if not video_path: video_path = get_stock_footage("mystery", 10)
-        if not video_path: return "Video bulunamadı."
-
-        audio = AudioFileClip("voiceover.mp3")
-        video = VideoFileClip(video_path).subclip(0, audio.duration)
-        
-        if video.h > 960: video = video.resize(height=960)
-        w, h = video.size
-        if w/h > 9/16:
-            new_w = h * (9/16)
-            video = video.crop(x1=(w/2 - new_w/2), width=new_w, height=h)
-        
-        video = video.set_audio(audio)
-        
-        try:
-            txt_clip = create_text_image_clip(script, video.duration, video.size)
-            final_video = CompositeVideoClip([video, txt_clip])
-        except: final_video = video
-
-        final_video.write_videofile("final_short.mp4", codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
-        video.close()
-        audio.close()
-        return "final_short.mp4"
-    except Exception as e: return f"Hata: {str(e)}"
+# --- YAPAY ZEKA AYARLARI ---
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Hazırız! Örnek: `/video horror`")
+    bot.reply_to(message, "Merhaba! Modelleri kontrol etmek için /modeller yaz.")
 
-@bot.message_handler(commands=['video'])
-def handle_video_command(message):
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        bot.reply_to(message, "Konu yazmadın. Örnek: `/video horror`")
-        return
-
-    topic = args[1]
-    bot.reply_to(message, f"🤖 Konu: '{topic}' işleniyor...")
+@bot.message_handler(commands=['modeller'])
+def list_models(message):
+    bot.reply_to(message, "🔍 Google'a soruluyor, lütfen bekle...")
     
-    # SENARYOYU AL (Google veya Yedek)
-    script, warning = get_script(topic)
-    
-    result = create_video(topic, script)
-    
-    if result and "Hata" in result:
-        bot.reply_to(message, f"❌ {result}")
-    elif result:
-        caption = f"🎥 Konu: {topic}"
-        if warning: caption += f"\n\n{warning}" # Hata varsa nota ekle
+    try:
+        model_list = []
+        # Google'daki tüm modelleri tara
+        for m in genai.list_models():
+            # Sadece içerik üretebilen (generateContent) modelleri al
+            if 'generateContent' in m.supported_generation_methods:
+                model_list.append(m.name)
         
-        with open(result, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption=caption)
+        if model_list:
+            # Listeyi alt alta yazıp gönder
+            response = "✅ İŞTE KULLANABİLECEĞİN MODELLER:\n\n" + "\n".join(model_list)
+            bot.reply_to(message, response)
+        else:
+            bot.reply_to(message, "❌ Hiçbir model bulunamadı! API Anahtarında veya Bölgede sorun olabilir.")
+            
+    except Exception as e:
+        bot.reply_to(message, f"❌ HATA OLUŞTU:\n{str(e)}")
 
+print("Dedektif Bot Çalışıyor...")
 bot.polling()
