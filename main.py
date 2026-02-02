@@ -1,19 +1,12 @@
 import os
 import telebot
-
-# --- KRİTİK YAMA (ANTIALIAS FIX) ---
-import PIL.Image
-if not hasattr(PIL.Image, 'ANTIALIAS'):
-    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-
 import requests
 import random
 import asyncio
 import edge_tts
 import numpy as np
 import textwrap
-# google.generativeai kütüphanesini sildik, artık Requests ile bağlanacağız.
-from PIL import ImageDraw, ImageFont 
+from PIL import Image, ImageDraw, ImageFont 
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
 
 # --- AYARLAR ---
@@ -23,7 +16,21 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# --- 1. FONT İNDİRİCİ ---
+# --- KRİTİK YAMA (ANTIALIAS FIX) ---
+if not hasattr(Image, 'ANTIALIAS'):
+    Image.ANTIALIAS = Image.LANCZOS
+
+# --- 1. YEDEK SENARYO DEPOSU (FALLBACK) ---
+# Google çalışmazsa bot buradan senaryo seçecek.
+BACKUP_SCRIPTS = {
+    "horror": "Did you know that if you wake up at 3 AM out of nowhere, there is an 80% chance someone is staring at you?",
+    "psychology": "Psychology says, if you can't stop thinking about someone, it's because they were thinking about you first.",
+    "space": "Did you know that space is completely silent? No matter how loud you scream, no one can hear you die.",
+    "love": "Did you know that staring into someone's eyes for 4 minutes can make you fall in love, even with a stranger?",
+    "default": "Did you know that your brain makes decisions 7 seconds before you are even conscious of them? You are not in control."
+}
+
+# --- 2. FONT İNDİRİCİ ---
 def download_font():
     font_path = "Oswald-Bold.ttf"
     if not os.path.exists(font_path):
@@ -35,48 +42,54 @@ def download_font():
         except: pass
     return font_path
 
-# --- 2. VİRAL SENARYO (KÜTÜPHANESİZ - DİREKT BAĞLANTI) ---
-def generate_script_with_ai(topic):
-    if not GEMINI_API_KEY:
-        return f"API Key missing for {topic}."
+# --- 3. SENARYO ÜRETİCİ (HATA KORUMALI) ---
+def get_script(topic):
+    # 1. Önce Google'ı dene
+    ai_response = try_google_ai(topic)
     
-    # Kütüphane yerine direkt Google'ın adresine istek atıyoruz.
-    # Bu yöntem sunucudaki sürümden etkilenmez.
+    if ai_response:
+        return ai_response, None # (Senaryo, Hata Yok)
+    
+    # 2. Google bozuksa YEDEK depodan seç
+    print("Google AI başarısız oldu, yedek senaryo kullanılıyor.")
+    
+    # Konuya uygun yedeği bul
+    topic_lower = topic.lower()
+    if "horror" in topic_lower or "scary" in topic_lower or "korku" in topic_lower:
+        script = BACKUP_SCRIPTS["horror"]
+    elif "space" in topic_lower or "uzay" in topic_lower:
+        script = BACKUP_SCRIPTS["space"]
+    elif "psychology" in topic_lower or "psikoloji" in topic_lower:
+        script = BACKUP_SCRIPTS["psychology"]
+    elif "love" in topic_lower or "aşk" in topic_lower:
+        script = BACKUP_SCRIPTS["love"]
+    else:
+        script = BACKUP_SCRIPTS["default"]
+        
+    return script, "⚠️ Not: Google AI yanıt vermedi (404), yedek senaryo kullanıldı."
+
+def try_google_ai(topic):
+    if not GEMINI_API_KEY: return None
+    
+    # Farklı bir adres deniyoruz (v1beta yerine v1)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
     headers = {'Content-Type': 'application/json'}
-    
-    prompt_text = (
-        f"Write a short, engaging script for a viral video about '{topic}'. "
-        "Start with a hook like 'Did you know'. "
-        "Keep it under 40 words. "
-        "Write in simple English. No emojis."
-    )
-    
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt_text}]
-        }]
-    }
+    prompt = f"Write a one-sentence shocking fact about '{topic}' starting with 'Did you know'. Under 30 words. English."
     
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        response = requests.post(url, headers=headers, json=payload, timeout=5)
         
         if response.status_code == 200:
-            data = response.json()
-            # Gelen cevabın içinden metni ayıklıyoruz
-            return data['candidates'][0]['content']['parts'][0]['text'].strip()
-        else:
-            return f"AI Error: Google refused connection ({response.status_code})"
-            
-    except Exception as e:
-        return f"AI Error: {str(e)}"
+            return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+    except:
+        pass
+    return None
 
-# --- 3. ALTYAZI ÇİZERİ (SARI VE BÜYÜK) ---
+# --- 4. ALTYAZI ÇİZERİ ---
 def create_text_image_clip(text, duration, video_size):
     W, H = video_size
     font_path = download_font()
-    
     fontsize = int(W / 12) 
     
     try: font = ImageFont.truetype(font_path, fontsize)
@@ -88,7 +101,7 @@ def create_text_image_clip(text, duration, video_size):
     word_list = wrapper.wrap(text=text)
     caption_new = '\n'.join(word_list)
     
-    img = PIL.Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
+    img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     bbox = draw.textbbox((0, 0), caption_new, font=font)
@@ -96,15 +109,13 @@ def create_text_image_clip(text, duration, video_size):
     x_pos, y_pos = (W - text_w) / 2, (H - text_h) / 2
     
     draw.text((x_pos, y_pos), caption_new, font=font, fill="#FFD700", align="center", stroke_width=6, stroke_fill="black")
-    
     return ImageClip(np.array(img)).set_duration(duration)
 
-# --- 4. SESLENDİRME ---
+# --- 5. DİĞER FONKSİYONLAR ---
 async def generate_voice_over(text, output_file="voiceover.mp3"):
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
     await communicate.save(output_file)
 
-# --- 5. STOK VİDEO ---
 def get_stock_footage(query, duration):
     if not PEXELS_API_KEY: return None
     headers = {"Authorization": PEXELS_API_KEY}
@@ -120,21 +131,17 @@ def get_stock_footage(query, duration):
                 video_files.append(best_file["link"])
         if not video_files: return None
         selected_video = random.choice(video_files)
-        video_path = "input_video.mp4"
-        with open(video_path, "wb") as f:
+        with open("input_video.mp4", "wb") as f:
             f.write(requests.get(selected_video).content)
-        return video_path
+        return "input_video.mp4"
     except: return None
 
-# --- 6. MONTAJ ---
-def create_video(topic, ai_text):
+def create_video(topic, script):
     try:
-        asyncio.run(generate_voice_over(ai_text))
-        
+        asyncio.run(generate_voice_over(script))
         video_path = get_stock_footage(topic, 10)
-        if not video_path: 
-            video_path = get_stock_footage("mystery", 10)
-            if not video_path: return "Video bulunamadı."
+        if not video_path: video_path = get_stock_footage("mystery", 10)
+        if not video_path: return "Video bulunamadı."
 
         audio = AudioFileClip("voiceover.mp3")
         video = VideoFileClip(video_path).subclip(0, audio.duration)
@@ -148,19 +155,15 @@ def create_video(topic, ai_text):
         video = video.set_audio(audio)
         
         try:
-            txt_clip = create_text_image_clip(ai_text, video.duration, video.size)
+            txt_clip = create_text_image_clip(script, video.duration, video.size)
             final_video = CompositeVideoClip([video, txt_clip])
-        except Exception as e:
-            final_video = video
+        except: final_video = video
 
-        output_path = "final_short.mp4"
-        final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
-        
+        final_video.write_videofile("final_short.mp4", codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
         video.close()
         audio.close()
-        return output_path
-    except Exception as e:
-        return f"Hata: {str(e)}"
+        return "final_short.mp4"
+    except Exception as e: return f"Hata: {str(e)}"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -176,18 +179,18 @@ def handle_video_command(message):
     topic = args[1]
     bot.reply_to(message, f"🤖 Konu: '{topic}' işleniyor...")
     
-    ai_script = generate_script_with_ai(topic)
+    # SENARYOYU AL (Google veya Yedek)
+    script, warning = get_script(topic)
     
-    if "AI Error" in ai_script:
-        bot.reply_to(message, f"⚠️ {ai_script}")
-        return
-
-    result = create_video(topic, ai_script)
+    result = create_video(topic, script)
     
     if result and "Hata" in result:
         bot.reply_to(message, f"❌ {result}")
     elif result:
+        caption = f"🎥 Konu: {topic}"
+        if warning: caption += f"\n\n{warning}" # Hata varsa nota ekle
+        
         with open(result, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption=f"🎥 Konu: {topic}")
+            bot.send_video(message.chat.id, v, caption=caption)
 
 bot.polling()
