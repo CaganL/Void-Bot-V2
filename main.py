@@ -39,33 +39,43 @@ def download_font():
         except: pass
     return font_path
 
-# --- 2. VİRAL SENARYO (GÜNCEL MODEL) ---
+# --- 2. VİRAL SENARYO (GARANTİLİ MODEL SEÇİCİ) ---
 def generate_script_with_ai(topic):
     if not GEMINI_API_KEY:
         return f"API Key missing for {topic}."
     
-    try:
-        # GÜNCEL VE HIZLI MODEL
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        prompt = (
-            f"Write a short, engaging script for a viral video about '{topic}'. "
-            "Start with a hook like 'Did you know'. "
-            "Keep it under 40 words. "
-            "Write in simple English. No emojis."
-        )
-        
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        return f"AI Error: {str(e)}"
+    # Denenecek Modeller Listesi (Sırayla dener)
+    models_to_try = ['gemini-1.5-flash', 'gemini-pro', 'gemini-1.0-pro']
+    
+    prompt = (
+        f"Write a short, engaging script for a viral video about '{topic}'. "
+        "Start with a hook like 'Did you know'. "
+        "Keep it under 40 words. "
+        "Write in simple English. No emojis."
+    )
+
+    last_error = ""
+
+    for model_name in models_to_try:
+        try:
+            # Modeli seç ve dene
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text.strip() # Başarılıysa hemen döndür
+        except Exception as e:
+            # Hata verirse kaydet ve bir sonraki modele geç
+            last_error = str(e)
+            continue
+    
+    # Hiçbiri çalışmazsa bunu döndür
+    return f"AI Error (All models failed): {last_error}"
 
 # --- 3. ALTYAZI ÇİZERİ (SARI VE BÜYÜK) ---
 def create_text_image_clip(text, duration, video_size):
     W, H = video_size
     font_path = download_font()
     
-    # Font boyutu: Ekran genişliğinin 12'de 1'i (Büyük ve okunaklı)
+    # Font boyutu
     fontsize = int(W / 12) 
     
     try: font = ImageFont.truetype(font_path, fontsize)
@@ -122,7 +132,7 @@ def create_video(topic, ai_text):
     try:
         asyncio.run(generate_voice_over(ai_text))
         
-        # Videoyu bulamazsa yedek olarak "abstract" ara
+        # Videoyu bulamazsa yedek olarak "mystery" ara
         video_path = get_stock_footage(topic, 10)
         if not video_path: 
             video_path = get_stock_footage("mystery", 10)
@@ -170,6 +180,7 @@ def handle_video_command(message):
     
     ai_script = generate_script_with_ai(topic)
     
+    # Hata varsa mesaj at, yoksa videoya devam et
     if "AI Error" in ai_script:
         bot.reply_to(message, f"⚠️ {ai_script}")
         return
