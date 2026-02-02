@@ -39,13 +39,13 @@ def download_font():
         except: pass
     return font_path
 
-# --- 2. VİRAL SENARYO (MODEL İSMİ DÜZELTİLDİ) ---
+# --- 2. VİRAL SENARYO (MODEL İSMİ DÜZELTİLDİ: 1.5-flash) ---
 def generate_script_with_ai(topic):
     if not GEMINI_API_KEY:
         return f"API Key missing for {topic}."
     
     try:
-        # BURASI DEĞİŞTİ: 'gemini-pro' yerine 'gemini-1.5-flash'
+        # HATA VEREN 'gemini-pro' YERİNE GÜNCEL MODELİ YAZDIK:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         prompt = (
@@ -58,10 +58,9 @@ def generate_script_with_ai(topic):
         response = model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
-        # Hata olursa bunu döndür ki videoda hatayı görelim
         return f"AI Error: {str(e)}"
 
-# --- 3. ALTYAZI ÇİZERİ (SARI RENK GELDİ) ---
+# --- 3. ALTYAZI ÇİZERİ (SARI RENK + SİYAH KENARLIK) ---
 def create_text_image_clip(text, duration, video_size):
     W, H = video_size
     font_path = download_font()
@@ -86,8 +85,7 @@ def create_text_image_clip(text, duration, video_size):
     text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x_pos, y_pos = (W - text_w) / 2, (H - text_h) / 2
     
-    # ESTETİK GÜNCELLEME: SARI YAZI + SİYAH ÇERÇEVE
-    # stroke_width=6 ile çok kalın siyah kenarlık
+    # ESTETİK GÜNCELLEME: SARI YAZI (#FFD700) + SİYAH KALIN ÇERÇEVE
     draw.text((x_pos, y_pos), caption_new, font=font, fill="#FFD700", align="center", stroke_width=6, stroke_fill="black")
     
     return ImageClip(np.array(img)).set_duration(duration)
@@ -101,8 +99,6 @@ async def generate_voice_over(text, output_file="voiceover.mp3"):
 def get_stock_footage(query, duration):
     if not PEXELS_API_KEY: return None
     headers = {"Authorization": PEXELS_API_KEY}
-    # Video araması İngilizce yapılmalı, o yüzden basit bir çeviri hilesi yapıyoruz
-    # Eğer konu çok Türkçe ise Pexels bulamayabilir.
     url = f"https://api.pexels.com/videos/search?query={query}&per_page=5&orientation=portrait"
     try:
         r = requests.get(url, headers=headers)
@@ -129,7 +125,6 @@ def create_video(topic, ai_text):
         # Videoyu Pexels'ten konuya göre bul
         video_path = get_stock_footage(topic, 10)
         if not video_path: 
-            # Video bulunamazsa varsayılan "dark" bir şeyler ara
             video_path = get_stock_footage("dark abstract", 10)
             if not video_path: return "Video bulunamadı."
 
@@ -175,7 +170,7 @@ def handle_video_command(message):
     
     ai_script = generate_script_with_ai(topic)
     
-    # Eğer AI hata verdiyse işlemi durdur ve hatayı söyle
+    # Eğer AI hata verirse kullanıcıya söyle
     if "AI Error" in ai_script:
         bot.reply_to(message, f"⚠️ {ai_script}")
         return
