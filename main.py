@@ -1,12 +1,15 @@
 import os
 import telebot
+# --- MOVIEPY AYARLARI (KRİTİK KISIM) ---
+from moviepy.config import change_settings
+change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
+
 import requests
 import json
 import random
 import asyncio
 import edge_tts
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
-from moviepy.video.tools.subtitles import SubtitlesClip
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
@@ -14,7 +17,7 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# --- KONU VE METİN (Basit Test İçin) ---
+# --- KONU VE METİN (Test İçin Sabit) ---
 TOPIC = "Fear"
 TEXT = "Did you know that fear is just a chemical reaction? Your brain prepares you to fight or flight."
 
@@ -30,8 +33,9 @@ def get_stock_footage(query, duration):
     video_files = []
     for video in data.get("videos", []):
         files = video.get("video_files", [])
-        best_file = max(files, key=lambda x: x["width"] * x["height"])
-        video_files.append(best_file["link"])
+        if files:
+            best_file = max(files, key=lambda x: x["width"] * x["height"])
+            video_files.append(best_file["link"])
     
     if not video_files:
         return None
@@ -56,11 +60,15 @@ def create_video():
     video = VideoFileClip(video_path).subclip(0, audio.duration)
     video = video.set_audio(audio)
     
-    # 4. Altyazı (Basit)
-    txt_clip = TextClip(TEXT, fontsize=50, color='white', size=video.size, method='caption')
-    txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
-    
-    final_video = CompositeVideoClip([video, txt_clip])
+    # 4. Altyazı Ekle
+    try:
+        txt_clip = TextClip(TEXT, fontsize=50, color='white', size=video.size, method='caption')
+        txt_clip = txt_clip.set_pos('center').set_duration(video.duration)
+        final_video = CompositeVideoClip([video, txt_clip])
+    except Exception as e:
+        print(f"Altyazı hatası: {e}")
+        final_video = video # Altyazı olmazsa videosunu at
+
     output_path = "final_short.mp4"
     final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
     return output_path
