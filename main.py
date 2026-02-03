@@ -91,7 +91,6 @@ def download_music(mood, filename="bg.mp3"):
         return True
     except: return False
 
-# --- GÜNCELLENDİ: Video İndirme (4K yerine 1080p tercihi) ---
 def get_stock_videos(topic, duration):
     headers = {"Authorization": PEXELS_API_KEY}
     queries = [topic, "abstract background", "nature", "dark"]
@@ -105,23 +104,16 @@ def get_stock_videos(topic, duration):
             for v in data:
                 if curr_dur >= duration: break
                 
-                # --- YENİ MANTIK: En uygun çözünürlüğü bul ---
+                # En uygun çözünürlüğü seç (1080p'ye en yakın olan)
                 best_link = None
-                # Hedef yükseklik: 1080p (Full HD)
-                target_height = 1080
                 min_diff = float('inf')
-
-                for file_info in v["video_files"]:
-                    # Sadece yüksekliği makul olanları değerlendir (örn: > 600px)
-                    if file_info["height"] > 600:
-                        diff = abs(file_info["height"] - target_height)
+                for f in v["video_files"]:
+                    if f["height"] > 600:
+                        diff = abs(f["height"] - 1080)
                         if diff < min_diff:
                             min_diff = diff
-                            best_link = file_info["link"]
-                
-                # Eğer uygun bir link bulamazsa eskisi gibi en büyüğü al
-                if not best_link:
-                     best_link = max(v["video_files"], key=lambda x: x["height"])["link"]
+                            best_link = f["link"]
+                if not best_link: best_link = max(v["video_files"], key=lambda x: x["height"])["link"]
 
                 path = f"v{i}.mp4"
                 with open(path, "wb") as f: f.write(requests.get(best_link).content)
@@ -184,12 +176,26 @@ def build_final_video(topic, script, mood):
         clips = []
         for p in v_paths:
             c = VideoFileClip(p)
+            
+            # --- HATA DÜZELTME BÖLÜMÜ ---
             nh = 1080
+            # 1. Genişliği orantılı hesapla
             nw = int(nh * c.w / c.h)
+            
+            # 2. Eğer tek sayıysa, çift yap! (607 -> 608)
             if nw % 2 != 0: nw += 1
+            
             c = c.resize(height=nh, width=nw)
+            
+            # 3. Standart 9:16 genişliğine (608px) sabitle
             tw = 608
-            if c.w > tw: c = c.crop(x1=(c.w-tw)/2, width=tw, height=nh)
+            if c.w > tw:
+                # Ortadan kırp
+                c = c.crop(x1=(c.w - tw) // 2, width=tw, height=nh)
+            else:
+                # Video çok darsa, genişliği 608'e zorla (Stretch yerine resize)
+                c = c.resize(width=tw, height=nh)
+                
             clips.append(c)
             
         main = concatenate_videoclips(clips, method="compose")
@@ -208,9 +214,7 @@ def build_final_video(topic, script, mood):
         final = CompositeVideoClip([main, subs])
         
         out = f"final_{int(time.time())}.mp4"
-        # --- GÜNCELLENDİ: Render Ayarları ---
-        # bitrate="2500k": Dosya boyutunu küçültür.
-        # ffmpeg_params=["-pix_fmt", "yuv420p"]: Siyah ekran sorununu çözer (Genel uyumluluk).
+        # Render ayarları (Siyah ekran ve boyut optimizasyonu dahil)
         final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", bitrate="2500k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
         temp.append(out)
         
@@ -245,5 +249,5 @@ def handle(m):
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (Siyah Ekran Fix)...")
+print("Bot Başlatıldı (Even Numbers Fix)...")
 bot.polling(non_stop=True)
