@@ -47,16 +47,14 @@ def generate_tts(text, output="voice.mp3"):
         return True
     except: return False
 
-# --- GEMINI ZEKASI (2.5 FLASH) ---
+# --- GEMINI ZEKASI ---
 def get_script_and_metadata(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
     prompt = (
         f"Write a YouTube Short script about '{topic}'. "
         "Strictly 100-120 words. No intro. "
         "Optional: Output as JSON { \"script\": \"...\", \"mood\": \"...\" } if possible, otherwise just text."
     )
-    
     for attempt in range(3):
         try:
             r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
@@ -72,9 +70,7 @@ def get_script_and_metadata(topic):
                 if len(raw.split()) > 20:
                     return raw.replace("*", "").strip(), "cinematic", f"#shorts {topic}"
         except Exception as e:
-            print(f"Deneme {attempt}: {e}")
             time.sleep(1)
-            
     return f"Here are some amazing facts about {topic}. Did you know this? It is truly fascinating.", "cinematic", f"#shorts {topic}"
 
 def download_music(mood, filename="bg.mp3"):
@@ -95,7 +91,6 @@ def get_stock_videos(topic, duration):
     headers = {"Authorization": PEXELS_API_KEY}
     queries = [topic, "abstract background", "nature", "dark"]
     paths, curr_dur, i = [], 0, 0
-    
     for q in queries:
         if curr_dur >= duration: break
         try:
@@ -103,8 +98,6 @@ def get_stock_videos(topic, duration):
             data = r.json().get("videos", [])
             for v in data:
                 if curr_dur >= duration: break
-                
-                # En uygun çözünürlüğü seç (1080p'ye en yakın olan)
                 best_link = None
                 min_diff = float('inf')
                 for f in v["video_files"]:
@@ -114,7 +107,6 @@ def get_stock_videos(topic, duration):
                             min_diff = diff
                             best_link = f["link"]
                 if not best_link: best_link = max(v["video_files"], key=lambda x: x["height"])["link"]
-
                 path = f"v{i}.mp4"
                 with open(path, "wb") as f: f.write(requests.get(best_link).content)
                 c = VideoFileClip(path)
@@ -123,7 +115,6 @@ def get_stock_videos(topic, duration):
                 c.close()
                 i += 1
         except: pass
-    
     if not paths: raise Exception("Video bulunamadı. Pexels Key kontrol et.")
     return paths
 
@@ -133,7 +124,6 @@ def create_subs(text, duration, size):
     try:
         font = ImageFont.truetype(font_path, int(W/10)) if font_path else ImageFont.load_default()
     except: font = ImageFont.load_default()
-
     words = text.split()
     chunks = []
     curr = []
@@ -143,7 +133,6 @@ def create_subs(text, duration, size):
             chunks.append(" ".join(curr))
             curr = []
     if curr: chunks.append(" ".join(curr))
-    
     clips = []
     dur_per = duration / len(chunks)
     for chunk in chunks:
@@ -177,25 +166,22 @@ def build_final_video(topic, script, mood):
         for p in v_paths:
             c = VideoFileClip(p)
             
-            # --- HATA DÜZELTME BÖLÜMÜ ---
-            nh = 1080
-            # 1. Genişliği orantılı hesapla
-            nw = int(nh * c.w / c.h)
+            # --- KRİTİK DÜZELTME: 607 PİKSEL HATASI ÖNLEYİCİ ---
+            # 1. Önce yüksekliği 1080 yap
+            c = c.resize(height=1080)
             
-            # 2. Eğer tek sayıysa, çift yap! (607 -> 608)
-            if nw % 2 != 0: nw += 1
-            
-            c = c.resize(height=nh, width=nw)
-            
-            # 3. Standart 9:16 genişliğine (608px) sabitle
-            tw = 608
-            if c.w > tw:
-                # Ortadan kırp
-                c = c.crop(x1=(c.w - tw) // 2, width=tw, height=nh)
-            else:
-                # Video çok darsa, genişliği 608'e zorla (Stretch yerine resize)
-                c = c.resize(width=tw, height=nh)
+            # 2. Genişlik Tek Sayı mı? (Örn: 607.5 -> 607)
+            if c.w % 2 != 0:
+                # Tek sayıysa, genişliği +1 piksel artırarak çift yap (608)
+                c = c.resize(width=c.w + 1)
                 
+            # 3. İdeal Shorts Genişliği (608px)
+            # Eğer video çok genişse (Yatay video): Ortadan kırp
+            # Eğer video darsa: Dokunma (Zaten çift sayı yaptık)
+            TARGET_W = 608
+            if c.w > TARGET_W:
+                c = c.crop(x1=(c.w - TARGET_W) // 2, width=TARGET_W, height=1080)
+            
             clips.append(c)
             
         main = concatenate_videoclips(clips, method="compose")
@@ -214,7 +200,7 @@ def build_final_video(topic, script, mood):
         final = CompositeVideoClip([main, subs])
         
         out = f"final_{int(time.time())}.mp4"
-        # Render ayarları (Siyah ekran ve boyut optimizasyonu dahil)
+        # Bitrate ve Pixel Format ayarı (Siyah ekran ve boyut için)
         final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", bitrate="2500k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
         temp.append(out)
         
@@ -231,23 +217,17 @@ def handle(m):
             bot.reply_to(m, "Konu girin: /video [Konu]")
             return
         topic = m.text.split(maxsplit=1)[1]
-        
         msg = bot.reply_to(m, f"🎬 '{topic}' hazırlanıyor...")
-        
         script, mood, desc = get_script_and_metadata(topic)
-        
         bot.edit_message_text(f"🎥 Kurgulanıyor... Mood: {mood}", m.chat.id, msg.message_id)
         path, files = build_final_video(topic, script, mood)
-        
         with open(path, 'rb') as v:
             bot.send_video(m.chat.id, v, caption=desc)
-        
         cleanup_files(files)
         bot.delete_message(m.chat.id, msg.message_id)
-        
     except Exception as e:
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (Even Numbers Fix)...")
+print("Bot Başlatıldı (V6 Final)...")
 bot.polling(non_stop=True)
