@@ -7,11 +7,11 @@ import numpy as np
 import textwrap
 import time
 import json
-import traceback  # Hata takibi için eklendi
+import traceback
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips, afx, CompositeAudioClip
 
-# --- AYARLAR (Railway Variables) ---
+# --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY") 
@@ -29,20 +29,39 @@ def cleanup_files(file_list):
             try: os.remove(f)
             except: pass
 
-def download_font():
+# --- GÜVENLİ FONT İNDİRİCİ ---
+def get_safe_font():
     font_path = "Oswald-Bold.ttf"
+    
+    # Dosya varsa ama bozuksa (boyutu çok küçükse) sil
+    if os.path.exists(font_path) and os.path.getsize(font_path) < 1000:
+        os.remove(font_path)
+
     if not os.path.exists(font_path):
         try:
-            url = "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf"
-            with open(font_path, "wb") as f: f.write(requests.get(url, timeout=10).content)
-        except Exception as e: print(f"Font Hatası: {e}")
-    return font_path
+            # Alternatif güvenli linkler
+            urls = [
+                "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf",
+                "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf" # Yedek font
+            ]
+            
+            for url in urls:
+                try:
+                    r = requests.get(url, timeout=10)
+                    if r.status_code == 200:
+                        with open(font_path, "wb") as f: f.write(r.content)
+                        break
+                except: continue
+        except Exception as e: print(f"Font İndirme Hatası: {e}")
+    
+    # Hala dosya yoksa veya bozuksa None dön (Default font kullanılsın)
+    if os.path.exists(font_path) and os.path.getsize(font_path) > 1000:
+        return font_path
+    return None
 
 def generate_tts(text, output="voice.mp3"):
     try:
-        # Edge-TTS kontrolü
-        command = ["edge-tts", "--voice", "en-US-ChristopherNeural", "--text", text, "--write-media", output]
-        subprocess.run(command, check=True)
+        subprocess.run(["edge-tts", "--voice", "en-US-ChristopherNeural", "--text", text, "--write-media", output], check=True)
         return True
     except FileNotFoundError:
         raise Exception("Sunucuda 'edge-tts' yüklü değil! requirements.txt dosyanı kontrol et.")
@@ -90,7 +109,7 @@ def download_music(mood, filename="bg.mp3"):
 
 def get_stock_videos(topic, duration):
     headers = {"Authorization": PEXELS_API_KEY}
-    queries = [topic, "abstract background", "cinematic"]
+    queries = [topic, "abstract background", "cinematic", "nature", "city"]
     paths, curr_dur, i = [], 0, 0
     
     for q in queries:
@@ -99,10 +118,6 @@ def get_stock_videos(topic, duration):
             r = requests.get(f"https://api.pexels.com/videos/search?query={q}&per_page=3&orientation=portrait", headers=headers, timeout=10)
             data = r.json().get("videos", [])
             
-            # HATA YAKALAMA: Eğer Pexels boş dönerse
-            if not data and i == 0: 
-                print(f"Uyarı: '{q}' için video bulunamadı.")
-                
             for v in data:
                 if curr_dur >= duration: break
                 link = max(v["video_files"], key=lambda x: x["height"])["link"]
@@ -118,9 +133,22 @@ def get_stock_videos(topic, duration):
     if not paths: raise Exception("Hiçbir video indirilemedi! Pexels API Key kontrol et veya konu değiştir.")
     return paths
 
+# --- HATA DÜZELTİLDİ: create_subs ---
 def create_subs(text, duration, size):
     W, H = size
-    font = ImageFont.truetype(download_font(), int(W/10))
+    
+    # FONT YÜKLEME (GÜVENLİ)
+    font_path = get_safe_font()
+    try:
+        if font_path:
+            font = ImageFont.truetype(font_path, int(W/10))
+        else:
+            raise Exception("Font yok")
+    except:
+        # Eğer font bozuksa varsayılan fontu yükle (Çökmemesi için)
+        print("Uyarı: Özel font yüklenemedi, varsayılan font kullanılıyor.")
+        font = ImageFont.load_default()
+
     words = text.split()
     chunks = []
     curr = []
@@ -141,8 +169,12 @@ def create_subs(text, duration, size):
         for line in lines:
             bbox = draw.textbbox((0,0), line, font=font)
             w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+            
+            # Siyah kutu
             draw.rectangle([(W-w)/2 - 10, y - 10, (W+w)/2 + 10, y + h + 10], fill=(0,0,0,180))
-            draw.text(((W-w)/2, y), line, font=font, fill="#FFD700", stroke_width=3, stroke_fill="black")
+            
+            # Yazı rengi (Varsayılan fontta renk desteklenmeyebilir ama deniyoruz)
+            draw.text(((W-w)/2, y), line, font=font, fill="#FFD700", stroke_width=0 if font_path is None else 3, stroke_fill="black")
             y += h + 10
         clips.append(ImageClip(np.array(img)).set_duration(dur_per))
     return concatenate_videoclips(clips)
@@ -194,7 +226,6 @@ def build_final_video(topic, script, mood):
         audio.close()
         return out, temp
     except Exception as e:
-        # Hata detayını geri döndür
         raise e
 
 @bot.message_handler(commands=['video'])
@@ -205,7 +236,7 @@ def handle(m):
             return
         topic = m.text.split(maxsplit=1)[1]
         
-        msg = bot.reply_to(m, f"🕵️ Hata Ayıklama Modu Başlatıldı: '{topic}' işleniyor...")
+        msg = bot.reply_to(m, f"🕵️ Hata Ayıklama Modu: '{topic}' işleniyor...")
         
         script, mood, desc = get_script_and_metadata(topic)
         path, files = build_final_video(topic, script, mood)
@@ -217,12 +248,10 @@ def handle(m):
         bot.delete_message(m.chat.id, msg.message_id)
         
     except Exception as e:
-        # İŞTE BURASI HATAYI SÖYLEYECEK
         error_msg = f"❌ KRİTİK HATA OLUŞTU:\n\n{str(e)}\n\n{traceback.format_exc()}"
-        # Mesaj çok uzunsa son kısmını at
         if len(error_msg) > 4000: error_msg = error_msg[-4000:]
         bot.reply_to(m, error_msg)
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (Debug Modu)...")
+print("Bot Başlatıldı (Safe Mode)...")
 bot.polling(non_stop=True)
