@@ -1,4 +1,11 @@
-import os, telebot, requests, asyncio, edge_tts, numpy as np, textwrap, time
+import os
+import telebot
+import requests
+import random
+import asyncio
+import edge_tts
+import numpy as np
+import textwrap
 from PIL import Image, ImageDraw, ImageFont 
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 
@@ -7,116 +14,137 @@ TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Pillow Hata Düzeltmesi (LANCZOS/ANTIALIAS Çakışması)
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
 if not hasattr(Image, 'ANTIALIAS'):
-    Image.ANTIALIAS = getattr(Image, 'Resampling', Image).LANCZOS
+    Image.ANTIALIAS = Image.LANCZOS
 
-MUSIC_LIBRARY = {
-    "horror": "https://www.chosic.com/wp-content/uploads/2021/07/The-Dead-Are-Coming.mp3",
-    "motivation": "https://www.chosic.com/wp-content/uploads/2021/10/Epic-Adventure.mp3",
-    "calm": "https://www.chosic.com/wp-content/uploads/2020/06/Lofi-Study.mp3",
-    "info": "https://www.chosic.com/wp-content/uploads/2021/04/Corporate-Uplifting-Motivational.mp3"
-}
+def download_font():
+    font_path = "Oswald-Bold.ttf"
+    if not os.path.exists(font_path):
+        url = "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf"
+        try:
+            r = requests.get(url)
+            with open(font_path, "wb") as f: f.write(r.content)
+        except: pass
+    return font_path
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
-
-def safe_dl(url, target):
-    try:
-        r = requests.get(url, stream=True, timeout=20)
-        if r.status_code == 200:
-            with open(target, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024*1024):
-                    if chunk: f.write(chunk)
-            return os.path.exists(target) and os.path.getsize(target) > 0
-    except: return False
-    return False
-
-def get_ai_data(topic):
+# --- 1. SENARYO MOTORU ---
+def get_script(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    prompt = f"Write a viral 115 word story about {topic}. End ONLY with: MOOD: [horror/motivation/calm/info]"
+    prompt = (f"Write a viral and terrifying horror story about '{topic}' for a YouTube Short. "
+              "Length must be around 115-125 words. No intro or outro. Simple English only.")
     try:
-        res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=12).json()
-        raw = res['candidates'][0]['content']['parts'][0]['text']
-        mood = next((m for m in MUSIC_LIBRARY if m in raw.lower()), "calm")
-        return raw.split("MOOD:")[0].replace("*", "").strip(), mood
-    except: return "A story of silence...", "calm"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        response = requests.post(url, json=payload, timeout=12)
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+    except: pass
+    return "I looked into the mirror and saw my own reflection. But it was smiling even though I was crying. Then, it slowly reached out from the glass and grabbed my throat."
 
-def draw_subs(text, duration, size):
-    W, H = size
-    font_p = "Oswald-Bold.ttf"
-    if not os.path.exists(font_p):
-        open(font_p, "wb").write(requests.get("https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf").content)
-    
-    # Font boyutu hatası koruması
-    f_size = max(10, int(W / 8.5))
-    font = ImageFont.truetype(font_p, f_size)
-    
-    # Daha akıllı metin bölme
-    lines = [s.strip() for s in text.replace(".", ".|").replace("?", "?|").split("|") if len(s.strip()) > 2]
-    if not lines: lines = [text[:50]]
-    dur_per = duration / len(lines)
-    
+# --- 2. ÇOKLU VİDEO İNDİRİCİ ---
+def get_multiple_videos(query, total_duration):
+    headers = {"Authorization": PEXELS_API_KEY}
+    search_url = f"https://api.pexels.com/videos/search?query={query}&per_page=12&orientation=portrait"
+    try:
+        r = requests.get(search_url, headers=headers)
+        videos_data = r.json().get("videos", [])
+        if not videos_data: return None
+        paths = []
+        current_dur = 0
+        for i, v in enumerate(videos_data[:5]):
+            if current_dur >= total_duration: break
+            link = max(v["video_files"], key=lambda x: x["height"])["link"]
+            path = f"part_{i}.mp4"
+            with open(path, "wb") as f: f.write(requests.get(link).content)
+            clip = VideoFileClip(path)
+            paths.append(path)
+            current_dur += clip.duration
+            clip.close()
+        return paths
+    except: return None
+
+# --- 3. ALTYAZI SİSTEMİ ---
+def create_subtitles(text, total_duration, video_size):
+    W, H = video_size
+    font_path = download_font()
+    fontsize = int(W / 12) 
+    try: font = ImageFont.truetype(font_path, fontsize)
+    except: font = ImageFont.load_default()
+    sentences = text.replace(".", ".|").replace("?", "?|").replace("!", "!|").split("|")
+    chunks = [s.strip() for s in sentences if s.strip()]
+    duration_per_chunk = total_duration / len(chunks)
     clips = []
-    for l in lines:
+    for chunk in chunks:
         img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
-        wrapped = '\n'.join(textwrap.wrap(l, width=14))
         draw = ImageDraw.Draw(img)
-        bbox = draw.textbbox((0, 0), wrapped, font=font)
+        wrapper = textwrap.TextWrapper(width=int(W/22))
+        caption_wrapped = '\n'.join(wrapper.wrap(text=chunk))
+        bbox = draw.textbbox((0, 0), caption_wrapped, font=font)
         tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
-        draw.text(((W-tw)/2, H*0.65), wrapped, font=font, fill="#FFD700", stroke_width=7, stroke_fill="black", align="center")
-        clips.append(ImageClip(np.array(img)).set_duration(dur_per))
+        draw.text(((W-tw)/2, H*0.7), caption_wrapped, font=font, fill="#FFD700", align="center", stroke_width=4, stroke_fill="black")
+        clips.append(ImageClip(np.array(img)).set_duration(duration_per_chunk))
     return concatenate_videoclips(clips)
 
-def make_video(topic, script, mood):
+# --- 4. MONTAJ MOTORU (YAMA EKLENDİ) ---
+def build_video(topic, script):
     try:
-        asyncio.run(edge_tts.Communicate(script, "en-US-ChristopherNeural").save("v.mp3"))
-        audio = AudioFileClip("v.mp3")
-        
-        final_audio = audio
-        m_url = MUSIC_LIBRARY.get(mood)
-        # Müzik format hatası koruması (Try-Except içinde)
-        if safe_dl(m_url, "bg.mp3"):
-            try:
-                bg = AudioFileClip("bg.mp3").volumex(0.12).set_duration(audio.duration)
-                from moviepy.audio.AudioClip import CompositeAudioClip
-                final_audio = CompositeAudioClip([audio, bg])
-            except: print("Müzik format hatası atlandı.")
-
-        h = {"Authorization": PEXELS_API_KEY}
-        r = requests.get(f"https://api.pexels.com/videos/search?query={topic}&per_page=5&orientation=portrait", headers=h).json()
+        asyncio.run(edge_tts.Communicate(script, "en-US-ChristopherNeural").save("voice.mp3"))
+        audio = AudioFileClip("voice.mp3")
+        paths = get_multiple_videos(topic, audio.duration)
+        if not paths: return "Görüntü bulunamadı."
         video_clips = []
-        for i, v in enumerate(r.get("videos", [])[:5]):
-            v_link = max(v["video_files"], key=lambda x: x["height"])["link"]
-            if safe_dl(v_link, f"p{i}.mp4"):
-                c = VideoFileClip(f"p{i}.mp4")
-                nh, nw = 1080, int((1080 * (c.w / c.h)) // 2) * 2
-                c = c.resize(height=nh, width=nw).crop(x1=(nw/2-304), width=608, height=1080)
-                video_clips.append(c)
-
-        main_v = concatenate_videoclips(video_clips, method="compose").loop(duration=audio.duration).set_audio(final_audio)
-        subs = draw_subs(script, audio.duration, main_v.size)
-        final = CompositeVideoClip([main_v, subs])
+        for p in paths:
+            c = VideoFileClip(p)
+            # KRİTİK YAMA: Boyutların her zaman çift sayı olmasını sağlıyoruz
+            new_h = 1080
+            new_w = int((new_h * (c.w / c.h)) // 2) * 2 # En yakın çift sayıya yuvarla
+            c = c.resize(height=new_h, width=new_w)
+            
+            # 9:16 Kırpma (W her zaman çift olacak)
+            target_w = int((new_h * (9/16)) // 2) * 2
+            if c.w > target_w:
+                c = c.crop(x1=(c.w/2 - target_w/2), width=target_w, height=new_h)
+            video_clips.append(c)
+            
+        main_video = concatenate_videoclips(video_clips, method="compose")
+        if main_video.duration < audio.duration:
+            main_video = main_video.loop(duration=audio.duration)
+        else:
+            main_video = main_video.subclip(0, audio.duration)
+        main_video = main_video.set_audio(audio)
+        subs = create_subtitles(script, main_video.duration, main_video.size)
+        final_result = CompositeVideoClip([main_video, subs])
         
-        final.write_videofile("out.mp4", codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', ffmpeg_params=["-pix_fmt", "yuv420p"])
-        return "out.mp4"
+        # Render
+        final_result.write_videofile(
+            "final_video.mp4", 
+            codec="libx264", 
+            audio_codec="aac", 
+            fps=24, 
+            preset='ultrafast', 
+            ffmpeg_params=["-pix_fmt", "yuv420p"],
+            threads=4
+        )
+        for c in video_clips: c.close()
+        audio.close()
+        return "final_video.mp4"
     except Exception as e: return f"Hata: {str(e)}"
 
 @bot.message_handler(commands=['video'])
-def start_video(m):
-    if len(m.text.split()) < 2: return bot.reply_to(m, "Konu girin.")
-    topic = m.text.split(maxsplit=1)[1]
-    bot.reply_to(m, f"🎬 '{topic}' kurgusu başlıyor...")
-    
-    script, mood = get_ai_data(topic)
-    res = make_video(topic, script, mood)
-    
-    if "out.mp4" in res:
-        with open(res, 'rb') as v: bot.send_video(m.chat.id, v, caption=f"✨ Mood: {mood.upper()}")
-    else: bot.reply_to(m, res)
+def handle_video(message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        bot.reply_to(message, "Lütfen bir konu yaz.")
+        return
+    topic = args[1]
+    bot.reply_to(message, f"🎥 '{topic}' işleniyor...")
+    script = get_script(topic)
+    video_path = build_video(topic, script)
+    if "final_video" in video_path:
+        with open(video_path, 'rb') as v:
+            bot.send_video(message.chat.id, v, caption=f"🎬 **Konu:** {topic}")
+    else:
+        bot.reply_to(message, video_path)
 
-# Railway Conflict (Çakışma) Temizleyici
-try:
-    bot.remove_webhook()
-    time.sleep(2)
-    bot.polling(non_stop=True, timeout=60)
-except: pass
+bot.polling()
