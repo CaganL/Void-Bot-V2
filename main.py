@@ -19,7 +19,6 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# Pillow Yama
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = getattr(Image, 'Resampling', Image).LANCZOS
 
@@ -47,14 +46,18 @@ def generate_tts(text, output="voice.mp3"):
         return True
     except: return False
 
-# --- GEMINI ZEKASI ---
+# --- GEMINI ZEKASI (GÖRSEL ARAMA TERİMLERİ EKLENDİ) ---
 def get_script_and_metadata(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    # Prompt güncellendi: Artık 'visual_keywords' de istiyoruz
     prompt = (
-        f"Write a YouTube Short script about '{topic}'. "
-        "Strictly 100-120 words. No intro. "
-        "Optional: Output as JSON { \"script\": \"...\", \"mood\": \"...\" } if possible, otherwise just text."
+        f"Write a YouTube Short script about '{topic}'.\n"
+        "1. Length: 100-120 words. Start with a hook.\n"
+        "2. VISUALS: Provide 3-4 english search terms for stock videos based on the script content.\n"
+        "3. Output JSON: {{ \"script\": \"...\", \"mood\": \"horror/happy/motivation\", \"keywords\": [\"term1\", \"term2\", \"term3\"], \"description\": \"...\" }}"
     )
+    
     for attempt in range(3):
         try:
             r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
@@ -65,19 +68,25 @@ def get_script_and_metadata(topic):
                     end = raw.rfind('}') + 1
                     if start != -1 and end != -1:
                         data = json.loads(raw[start:end])
-                        return data.get("script", raw), data.get("mood", "cinematic"), f"#shorts {topic}"
+                        # Eğer keywords listesi gelmezse konuyu kullan
+                        keywords = data.get("keywords", [topic, "cinematic", "4k"])
+                        return data.get("script", raw), data.get("mood", "cinematic"), keywords, f"#shorts {topic}"
                 except: pass
+                
+                # JSON başarısızsa manuel fallback
                 if len(raw.split()) > 20:
-                    return raw.replace("*", "").strip(), "cinematic", f"#shorts {topic}"
+                    return raw.replace("*", "").strip(), "cinematic", [topic, "abstract"], f"#shorts {topic}"
         except Exception as e:
             time.sleep(1)
-    return f"Here are some amazing facts about {topic}. Did you know this? It is truly fascinating.", "cinematic", f"#shorts {topic}"
+            
+    return f"Here are facts about {topic}.", "cinematic", [topic, "nature"], f"#shorts {topic}"
 
 def download_music(mood, filename="bg.mp3"):
     library = {
         "horror": "https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3",
         "motivation": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
-        "cinematic": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"
+        "cinematic": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
+        "happy": "https://cdn.pixabay.com/download/audio/2022/01/21/audio_31743c58bd.mp3"
     }
     try:
         url = library.get("cinematic")
@@ -87,22 +96,32 @@ def download_music(mood, filename="bg.mp3"):
         return True
     except: return False
 
-def get_stock_videos(topic, duration):
+# --- VİDEO ARAMA (ARTIK GÖRSEL TERİMLERİ KULLANIYOR) ---
+def get_stock_videos(keywords, duration):
     headers = {"Authorization": PEXELS_API_KEY}
-    queries = [topic, "abstract background", "nature", "dark"]
+    # Gemini'den gelen özel kelimeleri kullan
+    queries = keywords if isinstance(keywords, list) else [keywords]
+    
     paths, curr_dur, i = [], 0, 0
+    
+    # Her anahtar kelime için arama yap
     for q in queries:
         if curr_dur >= duration: break
         try:
-            r = requests.get(f"https://api.pexels.com/videos/search?query={q}&per_page=3&orientation=portrait", headers=headers, timeout=10)
+            r = requests.get(f"https://api.pexels.com/videos/search?query={q}&per_page=2&orientation=portrait", headers=headers, timeout=10)
             data = r.json().get("videos", [])
             for v in data:
                 if curr_dur >= duration: break
+                
+                # Kalite Filtresi: 1080p'ye en yakın olanı seç
                 best_link = None
+                min_diff = float('inf')
                 for f in v["video_files"]:
-                    if f["height"] > 600 and abs(f["height"] - 1080) < 500:
-                         best_link = f["link"]
-                         break
+                    if f["height"] > 600:
+                        diff = abs(f["height"] - 1080)
+                        if diff < min_diff:
+                            min_diff = diff
+                            best_link = f["link"]
                 if not best_link: best_link = max(v["video_files"], key=lambda x: x["height"])["link"]
                 
                 path = f"v{i}.mp4"
@@ -113,41 +132,58 @@ def get_stock_videos(topic, duration):
                 c.close()
                 i += 1
         except: pass
+    
     if not paths: raise Exception("Video bulunamadı. Pexels Key kontrol et.")
     return paths
 
+# --- ALTYAZI İYİLEŞTİRMESİ ---
 def create_subs(text, duration, size):
     W, H = size
     font_path = get_safe_font()
     try:
-        font = ImageFont.truetype(font_path, int(W/10)) if font_path else ImageFont.load_default()
+        font = ImageFont.truetype(font_path, int(W/12)) if font_path else ImageFont.load_default()
     except: font = ImageFont.load_default()
+
     words = text.split()
     chunks = []
     curr = []
+    # Kelime sayısını azalttık (Daha az sıkışık olsun diye)
     for w in words:
         curr.append(w)
-        if len(curr) >= 3:
+        if len(curr) >= 2: # Her satırda max 2-3 kelime
             chunks.append(" ".join(curr))
             curr = []
     if curr: chunks.append(" ".join(curr))
+    
     clips = []
     dur_per = duration / len(chunks)
+    
     for chunk in chunks:
         img = Image.new('RGBA', (int(W), int(H)), (0,0,0,0))
         draw = ImageDraw.Draw(img)
-        lines = textwrap.wrap(chunk.upper(), width=15)
-        y = H * 0.60
+        
+        # Metni sar (Wrap) - Genişliği artırdık
+        lines = textwrap.wrap(chunk.upper(), width=20)
+        
+        # Konum: Ekranın biraz daha altına
+        y = H * 0.65
+        
         for line in lines:
             bbox = draw.textbbox((0,0), line, font=font)
             w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-            draw.rectangle([(W-w)/2 - 10, y - 10, (W+w)/2 + 10, y + h + 10], fill=(0,0,0,180))
-            draw.text(((W-w)/2, y), line, font=font, fill="#FFD700", stroke_width=3, stroke_fill="black")
-            y += h + 10
+            
+            # Siyah Kutu (Daha geniş padding)
+            pad = 15
+            draw.rectangle([(W-w)/2 - pad, y - pad, (W+w)/2 + pad, y + h + pad], fill=(0,0,0,170))
+            
+            # Yazı
+            draw.text(((W-w)/2, y), line, font=font, fill="#FFD700", stroke_width=2, stroke_fill="black")
+            y += h + 25 # Satır aralığını açtık
+            
         clips.append(ImageClip(np.array(img)).set_duration(dur_per))
     return concatenate_videoclips(clips)
 
-def build_final_video(topic, script, mood):
+def build_final_video(topic, script, mood, keywords):
     temp = []
     try:
         generate_tts(script, "voice.mp3")
@@ -157,32 +193,21 @@ def build_final_video(topic, script, mood):
         has_music = download_music(mood, "bg.mp3")
         if has_music: temp.append("bg.mp3")
         
-        v_paths = get_stock_videos(topic, audio.duration)
+        # Görsel terimleri kullan
+        v_paths = get_stock_videos(keywords, audio.duration)
         temp.extend(v_paths)
         
         clips = []
         for p in v_paths:
             c = VideoFileClip(p)
             
-            # --- ZORUNLU BOYUTLANDIRMA (1081 PİKSEL HATASI ÇÖZÜMÜ) ---
-            # Hesaplama yapmıyoruz, direkt hedefi veriyoruz.
-            TARGET_W = 608
-            TARGET_H = 1080
-            
-            # 1. Önce yüksekliği 1080'e sabitle
+            # Zorunlu 608x1080 Boyutlandırma
+            TARGET_W, TARGET_H = 608, 1080
             c = c.resize(height=TARGET_H)
-            
-            # 2. Ortadan Kırp (Center Crop)
-            # Genişlik ne olursa olsun, tam ortadan 608 piksel al.
             if c.w > TARGET_W:
                 c = c.crop(x1=(c.w - TARGET_W) // 2, width=TARGET_W, height=TARGET_H)
             else:
-                # Video darsa 608'e genişlet (Bozulmayı göze alarak, hata vermesinden iyidir)
                 c = c.resize(width=TARGET_W, height=TARGET_H)
-            
-            # 3. VE EN ÖNEMLİSİ: SON KONTROL
-            # Ne olursa olsun çıktıyı zorla 608x1080'e boyutlandır.
-            # Bu, 1081 piksel gibi hataları ezer geçer.
             c = c.resize(newsize=(TARGET_W, TARGET_H))
             
             clips.append(c)
@@ -203,7 +228,11 @@ def build_final_video(topic, script, mood):
         final = CompositeVideoClip([main, subs])
         
         out = f"final_{int(time.time())}.mp4"
-        final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", bitrate="2500k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
+        
+        # --- KALİTE AYARLARI GÜNCELLENDİ ---
+        # Bitrate: 4500k (Daha net görüntü)
+        # Preset: medium (Daha iyi sıkıştırma, biraz daha yavaş ama kaliteli)
+        final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="medium", bitrate="4500k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
         temp.append(out)
         
         for c in clips: c.close()
@@ -219,17 +248,25 @@ def handle(m):
             bot.reply_to(m, "Konu girin: /video [Konu]")
             return
         topic = m.text.split(maxsplit=1)[1]
-        msg = bot.reply_to(m, f"🎬 '{topic}' hazırlanıyor...")
-        script, mood, desc = get_script_and_metadata(topic)
-        bot.edit_message_text(f"🎥 Kurgulanıyor... Mood: {mood}", m.chat.id, msg.message_id)
-        path, files = build_final_video(topic, script, mood)
+        msg = bot.reply_to(m, f"🎬 '{topic}' analiz ediliyor...")
+        
+        # Metadata'dan keywords'ü de alıyoruz artık
+        script, mood, keywords, desc = get_script_and_metadata(topic)
+        
+        # Kullanıcıya görsel terimleri göster (Eğlenceli olsun)
+        keywords_str = ", ".join(keywords) if isinstance(keywords, list) else keywords
+        bot.edit_message_text(f"🎥 Görseller aranıyor: {keywords_str}\nMood: {mood}", m.chat.id, msg.message_id)
+        
+        path, files = build_final_video(topic, script, mood, keywords)
+        
         with open(path, 'rb') as v:
             bot.send_video(m.chat.id, v, caption=desc)
         cleanup_files(files)
         bot.delete_message(m.chat.id, msg.message_id)
+        
     except Exception as e:
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (Exact Resize Fix)...")
+print("Bot Başlatıldı (High Quality & Smart Search)...")
 bot.polling(non_stop=True)
