@@ -7,18 +7,20 @@ import numpy as np
 import textwrap
 import time
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
+from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips, afx
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+BACKGROUND_MUSIC = "background.mp3"  # Trend veya ücretsiz arka plan müziği
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = Image.LANCZOS
 
+# --- FONT ---
 def download_font():
     font_path = "Oswald-Bold.ttf"
     if not os.path.exists(font_path):
@@ -41,11 +43,11 @@ def generate_tts(text, output="voice.mp3"):
     ]
     subprocess.run(cmd, check=True)
 
-# --- 1. SENARYO ---
+# --- SENARYO ---
 def get_script(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = (
-        f"Write a viral and terrifying horror story about '{topic}' for a YouTube Short. "
+        f"Write a viral and terrifying story about '{topic}' for a YouTube Short. "
         "Use short, punchy sentences. Add suspense every 2-3 sentences. "
         "Start with a shocking hook. Length 110-125 words. No intro or outro. Simple English."
     )
@@ -56,8 +58,7 @@ def get_script(topic):
             return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
     except:
         pass
-
-    return f"A {topic} story that will scare you in seconds!"
+    return f"A {topic} story that will grab attention immediately!"
 
 def make_hook_script(script):
     sentences = script.replace("!", ".").replace("?", ".").split(".")
@@ -68,54 +69,41 @@ def make_hook_script(script):
     rest = ". ".join(sentences[:-1])
     return f"{hook}. {rest}."
 
-# --- 2. VİDEO İNDİRME ---
+# --- VIDEO İNDİRME ---
 def get_multiple_videos(total_duration):
     headers = {"Authorization": PEXELS_API_KEY}
-
     queries = [
-        "dark room",
-        "creepy mirror",
-        "empty hallway night",
-        "shadow corridor",
-        "abandoned room",
-        "dark bathroom mirror"
+        "dark room", "creepy mirror", "empty hallway night",
+        "shadow corridor", "abandoned room", "dark bathroom mirror"
     ]
-
     paths = []
     current_dur = 0
     i = 0
-
     random.shuffle(queries)
-
     try:
         for q in queries:
             if current_dur >= total_duration:
                 break
-
             search_url = f"https://api.pexels.com/videos/search?query={q}&per_page=8&orientation=portrait"
             r = requests.get(search_url, headers=headers, timeout=15)
             videos_data = r.json().get("videos", [])
             if not videos_data:
                 continue
-
             v = random.choice(videos_data)
             link = max(v["video_files"], key=lambda x: x["height"])["link"]
             path = f"part_{i}.mp4"
             i += 1
-
             with open(path, "wb") as f:
                 f.write(requests.get(link, timeout=20).content)
-
             clip = VideoFileClip(path)
             paths.append(path)
             current_dur += clip.duration
             clip.close()
-
         return paths if paths else None
     except:
         return None
 
-# --- 3. ALTYAZI ---
+# --- ALTYAZI ---
 def split_for_subtitles(text):
     words = text.split()
     chunks = []
@@ -133,35 +121,26 @@ def create_subtitles(text, total_duration, video_size):
     W, H = video_size
     font_path = download_font()
     fontsize = int(W / 9)
-
     try:
         font = ImageFont.truetype(font_path, fontsize)
     except:
         font = ImageFont.load_default()
-
     chunks = split_for_subtitles(text)
     duration_per_chunk = total_duration / len(chunks)
-
     clips = []
-
     for chunk in chunks:
         img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-
         wrapper = textwrap.TextWrapper(width=16)
         caption_wrapped = '\n'.join(wrapper.wrap(text=chunk.upper()))
-
         bbox = draw.textbbox((0, 0), caption_wrapped, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-
         box_padding = 20
         box_x1 = (W - tw) / 2 - box_padding
         box_y1 = H * 0.75 - box_padding
         box_x2 = (W + tw) / 2 + box_padding
         box_y2 = H * 0.75 + th + box_padding
-
         draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill=(0, 0, 0, 160))
-
         draw.text(
             ((W - tw) / 2, H * 0.75),
             caption_wrapped,
@@ -171,51 +150,43 @@ def create_subtitles(text, total_duration, video_size):
             stroke_width=3,
             stroke_fill="black"
         )
-
         clips.append(ImageClip(np.array(img)).set_duration(duration_per_chunk))
-
     return concatenate_videoclips(clips)
 
-# --- 4. MONTAJ ---
+# --- MONTAJ ---
 def build_video(script, mode="final"):
-    """
-    mode: 'test' = hızlı üretim, düşük kalite
-          'final' = yüksek kalite, YouTube Shorts için ideal
-    """
     try:
         generate_tts(script, "voice.mp3")
         audio = AudioFileClip("voice.mp3")
-
         paths = get_multiple_videos(audio.duration)
         if not paths:
             return "No video clips found."
-
         video_clips = []
-
         for p in paths:
             c = VideoFileClip(p)
             new_h = 1080
             new_w = int((new_h * (c.w / c.h)) // 2) * 2
             c = c.resize(height=new_h, width=new_w)
-
             target_w = int((new_h * (9 / 16)) // 2) * 2
             if c.w > target_w:
                 c = c.crop(x1=(c.w / 2 - target_w / 2), width=target_w, height=new_h)
-
             video_clips.append(c)
-
         main_video = concatenate_videoclips(video_clips, method="compose")
-
-        if main_video.duration < audio.duration:
-            main_video = main_video.loop(duration=audio.duration)
+        # --- Shorts uyumlu sürede kes ---
+        if main_video.duration > 45:
+            main_video = main_video.subclip(0, 45)
+        elif main_video.duration < 30:
+            main_video = main_video.loop(duration=30)
+        # --- Arka plan müziği ekle ---
+        if os.path.exists(BACKGROUND_MUSIC):
+            music = AudioFileClip(BACKGROUND_MUSIC).subclip(0, main_video.duration).volumex(0.3)
+            main_video = main_video.set_audio(audio.audio_fadeout(0.5).fx(afx.audio_loop, duration=main_video.duration).volumex(1.0).fx(afx.audio_mix, music))
         else:
-            main_video = main_video.subclip(0, audio.duration)
-
-        main_video = main_video.set_audio(audio)
+            main_video = main_video.set_audio(audio)
+        # --- Altyazı ---
         subs = create_subtitles(script, main_video.duration, main_video.size)
         final_result = CompositeVideoClip([main_video, subs])
-
-        # --- MODE OPTİMİZASYONU ---
+        # --- MODE OPTIMİZASYONU ---
         if mode == "test":
             fps = 24
             preset = "fast"
@@ -224,7 +195,6 @@ def build_video(script, mode="final"):
             fps = 30
             preset = "medium"
             bitrate = "4000k"
-
         final_result.write_videofile(
             "final_video.mp4",
             codec="libx264",
@@ -235,17 +205,17 @@ def build_video(script, mode="final"):
             ffmpeg_params=["-pix_fmt", "yuv420p"],
             threads=2
         )
-
+        # --- Thumbnail oluştur ---
+        frame = final_result.get_frame(1)
+        Image.fromarray(frame).save("thumbnail.jpg")
         for c in video_clips:
             c.close()
         audio.close()
-
         return "final_video.mp4"
-
     except Exception as e:
         return f"Error: {str(e)}"
 
-# --- 5. DİNAMİK AÇIKLAMA (İNGİLİZCE, HİKÂYEYE DAYALI) ---
+# --- DİNAMİK AÇIKLAMA ---
 def generate_story_based_description(script, topic):
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
     hook = sentences[0] if sentences else f"A terrifying {topic} story you must watch!"
@@ -255,8 +225,7 @@ def generate_story_based_description(script, topic):
         "Enjoyed it? Hit like and subscribe for more! 🎬"
     ]
     hashtags = [
-        f"#{topic.replace(' ', '')}",
-        "#horror", "#scary", "#shorts", "#creepy", "#viral", "#thriller", "#mystery"
+        f"#{topic.replace(' ', '')}", "#horror", "#shorts", "#creepy", "#viral", "#thriller"
     ]
     import random
     cta = random.choice(calls_to_action)
@@ -270,25 +239,21 @@ def handle_video(message):
     if len(args) < 2:
         bot.reply_to(message, "Please provide a topic.")
         return
-
     topic = args[1]
     mode = "test" if len(args) > 2 and args[2].lower() == "test" else "final"
-
     bot.reply_to(message, f"🎥 Processing '{topic}' in {mode} mode...")
-
     script = get_script(topic)
     script = make_hook_script(script)
-
     video_path = build_video(script, mode=mode)
-
     if "final_video" in video_path:
         description = generate_story_based_description(script, topic)
-        time.sleep(2)  # güvenli yükleme için kısa bekleme
+        time.sleep(2)
         with open(video_path, 'rb') as v:
             bot.send_video(
                 message.chat.id,
                 v,
-                caption=f"🎬 Topic: {topic}\n\nDescription:\n{description}"
+                caption=f"🎬 Topic: {topic}\n\nDescription:\n{description}",
+                thumb=open("thumbnail.jpg", "rb")
             )
     else:
         bot.reply_to(message, video_path)
