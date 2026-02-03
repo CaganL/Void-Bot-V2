@@ -40,45 +40,24 @@ def get_safe_font():
         except: pass
     return font_path if os.path.exists(font_path) else None
 
-# --- GELİŞMİŞ SES MOTORU (MOOD DESTELİ) ---
-def generate_tts(text, mood, output="voice.mp3"):
+# --- SES MOTORU (FABRİKA AYARLARINA DÖNÜLDÜ - GARANTİ ÇALIŞIR) ---
+def generate_tts(text, output="voice.mp3"):
     try:
-        # Varsayılan ayarlar
-        rate = "+0%"
-        pitch = "+0Hz"
-        
-        # Mood'a göre ses ayarı
-        if "horror" in mood.lower() or "scary" in mood.lower():
-            rate = "-10%"  # Daha yavaş (Ürpertici)
-            pitch = "-5Hz" # Biraz daha kalın
-        elif "motivation" in mood.lower() or "happy" in mood.lower() or "fun" in mood.lower():
-            rate = "+15%"  # Daha hızlı (Enerjik)
-            pitch = "+0Hz"
-
-        # Edge-TTS komutu
-        command = [
-            "edge-tts",
-            "--voice", "en-US-ChristopherNeural",
-            "--rate", rate,
-            "--pitch", pitch,
-            "--text", text,
-            "--write-media", output
-        ]
-        subprocess.run(command, check=True)
+        # Hız/Pitch ayarlarını kaldırdık, standart ve temiz ses.
+        subprocess.run(["edge-tts", "--voice", "en-US-ChristopherNeural", "--text", text, "--write-media", output], check=True)
         return True
     except: return False
 
 def get_script_and_metadata(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # --- PROMOPT GÜNCELLENDİ: KANCA (HOOK) İSTİYORUZ ---
+    # KANCA (HOOK) ÖZELLİĞİ DURUYOR
     prompt = (
         f"Act as a viral content creator. Write a script about '{topic}'.\n"
         "1. CRITICAL: Start with a SHOCKING HOOK (e.g., 'You won't believe this...', 'Stop doing this...').\n"
         "2. Length: 100-130 words.\n"
-        "3. Tone: Engaging, storytelling style.\n"
-        "4. VISUALS: Provide 3-4 english search terms for stock videos.\n"
-        "5. Output JSON: {{ \"script\": \"...\", \"mood\": \"horror/motivation/happy\", \"keywords\": [\"term1\", \"term2\"], \"description\": \"...\" }}"
+        "3. VISUALS: Provide 3-4 english search terms for stock videos.\n"
+        "4. Output JSON: {{ \"script\": \"...\", \"mood\": \"horror/motivation/happy\", \"keywords\": [\"term1\", \"term2\"], \"description\": \"...\" }}"
     )
     
     for attempt in range(3):
@@ -143,19 +122,17 @@ def get_stock_videos(keywords, duration):
     if not paths: raise Exception("Görsel video bulunamadı.")
     return paths
 
-# --- ALTYAZI GÜNCELLEMESİ (BÜYÜK & NET) ---
+# --- BÜYÜK ALTYAZI ÖZELLİĞİ DURUYOR ---
 def create_subs(text, duration, size):
     W, H = size
     font_path = get_safe_font()
     try:
-        # Font boyutunu büyüttük (W/12 -> W/9)
         font = ImageFont.truetype(font_path, int(W/9)) if font_path else ImageFont.load_default()
     except: font = ImageFont.load_default()
     
     words = text.split()
     chunks = []
     curr = []
-    # Ekranda daha az kelime, daha büyük yazı
     for w in words:
         curr.append(w)
         if len(curr) >= 2: 
@@ -169,20 +146,13 @@ def create_subs(text, duration, size):
     for chunk in chunks:
         img = Image.new('RGBA', (int(W), int(H)), (0,0,0,0))
         draw = ImageDraw.Draw(img)
-        
-        # Text Wrap genişliğini azalttık ki taşmasın
         lines = textwrap.wrap(chunk.upper(), width=15)
         y = H * 0.60
         
         for line in lines:
             bbox = draw.textbbox((0,0), line, font=font)
             w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-            
-            # Arka plan daha koyu (Opacity 230) ve daha geniş
-            pad = 20
-            draw.rectangle([(W-w)/2 - pad, y - pad, (W+w)/2 + pad, y + h + pad], fill=(0,0,0,230))
-            
-            # Yazı
+            draw.rectangle([(W-w)/2 - 20, y - 20, (W+w)/2 + 20, y + h + 20], fill=(0,0,0,230))
             draw.text(((W-w)/2, y), line, font=font, fill="#FFD700", stroke_width=3, stroke_fill="black")
             y += h + 30
             
@@ -192,8 +162,8 @@ def create_subs(text, duration, size):
 def build_final_video(topic, script, mood, keywords):
     temp = []
     try:
-        # Seslendirmeye Mood bilgisini de gönderiyoruz
-        generate_tts(script, mood, "voice.mp3")
+        # Seslendirme artık Mood parametresi almıyor, düz ve güvenli çalışıyor.
+        generate_tts(script, "voice.mp3")
         temp.append("voice.mp3")
         audio = AudioFileClip("voice.mp3")
         
@@ -272,5 +242,5 @@ def handle(m):
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (V10 - Viral Mode)...")
+print("Bot Başlatıldı (V11 - Stabil & Pro)...")
 bot.polling(non_stop=True)
