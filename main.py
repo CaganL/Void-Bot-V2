@@ -47,9 +47,9 @@ def generate_tts(text, output="voice.mp3"):
 def get_script(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = (
-        f"Write a viral and terrifying story about '{topic}' for a YouTube Short. "
+        f"Write a viral and engaging story about '{topic}' for a YouTube Short. "
         "Use short, punchy sentences. Add suspense every 2-3 sentences. "
-        "Start with a shocking hook. Length 110-125 words. No intro or outro. Simple English."
+        "Start with a shocking or motivating hook. Length 110-125 words. No intro or outro. Simple English."
     )
     try:
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -186,7 +186,7 @@ def build_video(script, mode="final"):
         # --- Altyazı ---
         subs = create_subtitles(script, main_video.duration, main_video.size)
         final_result = CompositeVideoClip([main_video, subs])
-        # --- MODE OPTIMİZASYONU ---
+        # --- MODE OPTIMIZASYONU ---
         if mode == "test":
             fps = 24
             preset = "fast"
@@ -215,21 +215,37 @@ def build_video(script, mode="final"):
     except Exception as e:
         return f"Error: {str(e)}"
 
-# --- DİNAMİK AÇIKLAMA ---
+# --- DİNAMİK AÇIKLAMA (KONUYA GÖRE HOOK & HASHTAG) ---
 def generate_story_based_description(script, topic):
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
-    hook = sentences[0] if sentences else f"A terrifying {topic} story you must watch!"
+
+    # --- Hook seçimi ---
+    if topic.lower() in ["horror", "scary", "creepy", "thriller"]:
+        hook = sentences[0] if sentences else f"A terrifying {topic} story you must watch!"
+    elif topic.lower() in ["motivation", "success", "inspiration", "selfhelp"]:
+        hook = sentences[0] if sentences else f"Push yourself, because greatness doesn’t wait!"
+    else:
+        hook = sentences[0] if sentences else f"Watch this amazing {topic} story!"
+
+    # --- Call-to-action ---
     calls_to_action = [
         "Like, comment, and subscribe for more! 🔔",
-        "Don't forget to like and share this scary story! 👻",
-        "Enjoyed it? Hit like and subscribe for more! 🎬"
+        "Don't forget to like and share! 👀",
+        "Enjoyed it? Hit like and subscribe! 🎬"
     ]
-    hashtags = [
-        f"#{topic.replace(' ', '')}", "#horror", "#shorts", "#creepy", "#viral", "#thriller"
-    ]
+
+    # --- Hashtaglar ---
+    if topic.lower() in ["horror", "scary", "creepy", "thriller"]:
+        hashtags = [f"#{topic.replace(' ', '')}", "#horror", "#scary", "#shorts", "#creepy", "#viral", "#thriller"]
+    elif topic.lower() in ["motivation", "success", "inspiration", "selfhelp"]:
+        hashtags = [f"#{topic.replace(' ', '')}", "#motivation", "#success", "#shorts", "#inspiration", "#viral"]
+    else:
+        hashtags = [f"#{topic.replace(' ', '')}", "#shorts", "#viral"]
+
     import random
     cta = random.choice(calls_to_action)
     hashtags_text = " ".join(hashtags)
+
     return f"{hook}\n\n{cta}\n\n{hashtags_text}"
 
 # --- TELEGRAM ---
