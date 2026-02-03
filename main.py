@@ -1,11 +1,4 @@
-import os
-import telebot
-import requests
-import asyncio
-import edge_tts
-import numpy as np
-import textwrap
-import time
+import os, telebot, requests, asyncio, edge_tts, numpy as np, textwrap, time
 from PIL import Image, ImageDraw, ImageFont 
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 
@@ -14,9 +7,9 @@ TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Pillow Versiyon Hatası Düzeltmesi
+# Pillow Hata Düzeltmesi (LANCZOS/ANTIALIAS Çakışması)
 if not hasattr(Image, 'ANTIALIAS'):
-    Image.ANTIALIAS = Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS
+    Image.ANTIALIAS = getattr(Image, 'Resampling', Image).LANCZOS
 
 MUSIC_LIBRARY = {
     "horror": "https://www.chosic.com/wp-content/uploads/2021/07/The-Dead-Are-Coming.mp3",
@@ -27,7 +20,7 @@ MUSIC_LIBRARY = {
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
-def download_secure(url, target):
+def safe_dl(url, target):
     try:
         r = requests.get(url, stream=True, timeout=20)
         if r.status_code == 200:
@@ -40,13 +33,11 @@ def download_secure(url, target):
 
 def get_ai_data(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    prompt = f"Write a viral story about {topic} in 115 words. End with: MOOD: [horror/motivation/calm/info]"
+    prompt = f"Write a viral 115 word story about {topic}. End ONLY with: MOOD: [horror/motivation/calm/info]"
     try:
         res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=12).json()
         raw = res['candidates'][0]['content']['parts'][0]['text']
-        mood = "calm"
-        for m in MUSIC_LIBRARY.keys():
-            if m in raw.lower(): mood = m
+        mood = next((m for m in MUSIC_LIBRARY if m in raw.lower()), "calm")
         return raw.split("MOOD:")[0].replace("*", "").strip(), mood
     except: return "A story of silence...", "calm"
 
@@ -54,11 +45,15 @@ def draw_subs(text, duration, size):
     W, H = size
     font_p = "Oswald-Bold.ttf"
     if not os.path.exists(font_p):
-        r = requests.get("https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf")
-        with open(font_p, "wb") as f: f.write(r.content)
+        open(font_p, "wb").write(requests.get("https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf").content)
     
-    font = ImageFont.truetype(font_p, int(W / 8.5))
-    lines = [s.strip() for s in text.replace(".", ".|").replace("?", "?|").split("|") if s.strip()]
+    # Font boyutu hatası koruması
+    f_size = max(10, int(W / 8.5))
+    font = ImageFont.truetype(font_p, f_size)
+    
+    # Daha akıllı metin bölme
+    lines = [s.strip() for s in text.replace(".", ".|").replace("?", "?|").split("|") if len(s.strip()) > 2]
+    if not lines: lines = [text[:50]]
     dur_per = duration / len(lines)
     
     clips = []
@@ -79,19 +74,20 @@ def make_video(topic, script, mood):
         
         final_audio = audio
         m_url = MUSIC_LIBRARY.get(mood)
-        if download_secure(m_url, "bg.mp3"):
+        # Müzik format hatası koruması (Try-Except içinde)
+        if safe_dl(m_url, "bg.mp3"):
             try:
                 bg = AudioFileClip("bg.mp3").volumex(0.12).set_duration(audio.duration)
                 from moviepy.audio.AudioClip import CompositeAudioClip
                 final_audio = CompositeAudioClip([audio, bg])
-            except: pass
-            
+            except: print("Müzik format hatası atlandı.")
+
         h = {"Authorization": PEXELS_API_KEY}
         r = requests.get(f"https://api.pexels.com/videos/search?query={topic}&per_page=5&orientation=portrait", headers=h).json()
         video_clips = []
         for i, v in enumerate(r.get("videos", [])[:5]):
             v_link = max(v["video_files"], key=lambda x: x["height"])["link"]
-            if download_secure(v_link, f"p{i}.mp4"):
+            if safe_dl(v_link, f"p{i}.mp4"):
                 c = VideoFileClip(f"p{i}.mp4")
                 nh, nw = 1080, int((1080 * (c.w / c.h)) // 2) * 2
                 c = c.resize(height=nh, width=nw).crop(x1=(nw/2-304), width=608, height=1080)
@@ -118,9 +114,9 @@ def start_video(m):
         with open(res, 'rb') as v: bot.send_video(m.chat.id, v, caption=f"✨ Mood: {mood.upper()}")
     else: bot.reply_to(m, res)
 
+# Railway Conflict (Çakışma) Temizleyici
 try:
     bot.remove_webhook()
-    time.sleep(1)
-    bot.polling(non_stop=True)
-except Exception as e:
-    print(f"Polling hatası: {e}")
+    time.sleep(2)
+    bot.polling(non_stop=True, timeout=60)
+except: pass
