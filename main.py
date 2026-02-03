@@ -99,14 +99,12 @@ def get_stock_videos(topic, duration):
             for v in data:
                 if curr_dur >= duration: break
                 best_link = None
-                min_diff = float('inf')
                 for f in v["video_files"]:
-                    if f["height"] > 600:
-                        diff = abs(f["height"] - 1080)
-                        if diff < min_diff:
-                            min_diff = diff
-                            best_link = f["link"]
+                    if f["height"] > 600 and abs(f["height"] - 1080) < 500:
+                         best_link = f["link"]
+                         break
                 if not best_link: best_link = max(v["video_files"], key=lambda x: x["height"])["link"]
+                
                 path = f"v{i}.mp4"
                 with open(path, "wb") as f: f.write(requests.get(best_link).content)
                 c = VideoFileClip(path)
@@ -166,21 +164,26 @@ def build_final_video(topic, script, mood):
         for p in v_paths:
             c = VideoFileClip(p)
             
-            # --- KRİTİK DÜZELTME: 607 PİKSEL HATASI ÖNLEYİCİ ---
-            # 1. Önce yüksekliği 1080 yap
-            c = c.resize(height=1080)
-            
-            # 2. Genişlik Tek Sayı mı? (Örn: 607.5 -> 607)
-            if c.w % 2 != 0:
-                # Tek sayıysa, genişliği +1 piksel artırarak çift yap (608)
-                c = c.resize(width=c.w + 1)
-                
-            # 3. İdeal Shorts Genişliği (608px)
-            # Eğer video çok genişse (Yatay video): Ortadan kırp
-            # Eğer video darsa: Dokunma (Zaten çift sayı yaptık)
+            # --- ZORUNLU BOYUTLANDIRMA (1081 PİKSEL HATASI ÇÖZÜMÜ) ---
+            # Hesaplama yapmıyoruz, direkt hedefi veriyoruz.
             TARGET_W = 608
+            TARGET_H = 1080
+            
+            # 1. Önce yüksekliği 1080'e sabitle
+            c = c.resize(height=TARGET_H)
+            
+            # 2. Ortadan Kırp (Center Crop)
+            # Genişlik ne olursa olsun, tam ortadan 608 piksel al.
             if c.w > TARGET_W:
-                c = c.crop(x1=(c.w - TARGET_W) // 2, width=TARGET_W, height=1080)
+                c = c.crop(x1=(c.w - TARGET_W) // 2, width=TARGET_W, height=TARGET_H)
+            else:
+                # Video darsa 608'e genişlet (Bozulmayı göze alarak, hata vermesinden iyidir)
+                c = c.resize(width=TARGET_W, height=TARGET_H)
+            
+            # 3. VE EN ÖNEMLİSİ: SON KONTROL
+            # Ne olursa olsun çıktıyı zorla 608x1080'e boyutlandır.
+            # Bu, 1081 piksel gibi hataları ezer geçer.
+            c = c.resize(newsize=(TARGET_W, TARGET_H))
             
             clips.append(c)
             
@@ -200,7 +203,6 @@ def build_final_video(topic, script, mood):
         final = CompositeVideoClip([main, subs])
         
         out = f"final_{int(time.time())}.mp4"
-        # Bitrate ve Pixel Format ayarı (Siyah ekran ve boyut için)
         final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", bitrate="2500k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
         temp.append(out)
         
@@ -229,5 +231,5 @@ def handle(m):
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (V6 Final)...")
+print("Bot Başlatıldı (Exact Resize Fix)...")
 bot.polling(non_stop=True)
