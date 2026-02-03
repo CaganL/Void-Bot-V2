@@ -11,7 +11,7 @@ import traceback
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips, afx, CompositeAudioClip
 
-# --- AYARLAR (Railway Variables) ---
+# --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY") 
@@ -47,15 +47,15 @@ def generate_tts(text, output="voice.mp3"):
         return True
     except: return False
 
-# --- GELİŞMİŞ GEMINI FONKSİYONU ---
+# --- GEMINI ZEKASI (MODEL GÜNCELLENDİ: 2.5 Flash) ---
 def get_script_and_metadata(topic):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={GEMINI_API_KEY}"
+    # BURAYI GÜNCELLEDİK: gemini-2.5-flash
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
     prompt = (
-        f"You are a script generator. Create a YouTube Short script about '{topic}'.\n"
-        "Rules:\n"
-        "1. Length: 100-130 words.\n"
-        "2. Strict JSON output format: {{ \"script\": \"...\", \"mood\": \"horror\", \"description\": \"...\" }}\n"
-        "3. No markdown, just JSON string."
+        f"Write a YouTube Short script about '{topic}'. "
+        "Strictly 100-120 words. No intro. "
+        "Optional: Output as JSON { \"script\": \"...\", \"mood\": \"...\" } if possible, otherwise just text."
     )
     
     for attempt in range(3):
@@ -64,31 +64,32 @@ def get_script_and_metadata(topic):
             if r.status_code == 200:
                 raw = r.json()['candidates'][0]['content']['parts'][0]['text']
                 
-                # --- AKILLI TEMİZLİK ---
-                # Gemini bazen ```json ile başlar, bazen başlamaz.
-                # Biz en garantisini yapıp ilk '{' ve son '}' arasını alalım.
-                start = raw.find('{')
-                end = raw.rfind('}') + 1
+                # 1. JSON Denemesi
+                try:
+                    start = raw.find('{')
+                    end = raw.rfind('}') + 1
+                    if start != -1 and end != -1:
+                        data = json.loads(raw[start:end])
+                        return data.get("script", raw), data.get("mood", "cinematic"), f"#shorts {topic}"
+                except:
+                    pass
                 
-                if start != -1 and end != -1:
-                    json_str = raw[start:end]
-                    data = json.loads(json_str)
-                    
-                    if len(data.get("script", "").split()) < 30: raise ValueError("Script kısa")
-                    return data["script"], data.get("mood", "cinematic"), data.get("description", f"#shorts {topic}")
+                # 2. JSON Başarısızsa DÜZ METİN al
+                if len(raw.split()) > 20:
+                    return raw.replace("*", "").strip(), "cinematic", f"#shorts {topic}"
                     
         except Exception as e:
             print(f"Deneme {attempt}: {e}")
             time.sleep(1)
             
-    # Hata olursa YEDEK metin (Ama bunu istemiyoruz, o yüzden hata fırlatacağız)
-    raise Exception("Gemini senaryo üretemedi. Lütfen tekrar deneyin.")
+    # Hala olmazsa YEDEK metin
+    return f"Here are some amazing facts about {topic}. Did you know this? It is truly fascinating.", "cinematic", f"#shorts {topic}"
 
 def download_music(mood, filename="bg.mp3"):
     library = {
-        "horror": "[https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3](https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3)",
-        "motivation": "[https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3](https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3)",
-        "cinematic": "[https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3](https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3)"
+        "horror": "https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3",
+        "motivation": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
+        "cinematic": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"
     }
     try:
         url = library.get("cinematic")
@@ -100,13 +101,13 @@ def download_music(mood, filename="bg.mp3"):
 
 def get_stock_videos(topic, duration):
     headers = {"Authorization": PEXELS_API_KEY}
-    queries = [topic, "abstract background", "cinematic", "dark atmosphere"]
+    queries = [topic, "abstract background", "nature", "dark"]
     paths, curr_dur, i = [], 0, 0
     
     for q in queries:
         if curr_dur >= duration: break
         try:
-            r = requests.get(f"[https://api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){q}&per_page=3&orientation=portrait", headers=headers, timeout=10)
+            r = requests.get(f"https://api.pexels.com/videos/search?query={q}&per_page=3&orientation=portrait", headers=headers, timeout=10)
             data = r.json().get("videos", [])
             for v in data:
                 if curr_dur >= duration: break
@@ -213,11 +214,11 @@ def handle(m):
             return
         topic = m.text.split(maxsplit=1)[1]
         
-        msg = bot.reply_to(m, f"🎬 '{topic}' için senaryo yazılıyor...")
+        msg = bot.reply_to(m, f"🎬 '{topic}' hazırlanıyor...")
         
         script, mood, desc = get_script_and_metadata(topic)
         
-        bot.edit_message_text(f"🎥 Video kurgulanıyor... (Mood: {mood})", m.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎥 Kurgulanıyor... Mood: {mood}", m.chat.id, msg.message_id)
         path, files = build_final_video(topic, script, mood)
         
         with open(path, 'rb') as v:
@@ -227,9 +228,8 @@ def handle(m):
         bot.delete_message(m.chat.id, msg.message_id)
         
     except Exception as e:
-        error_msg = f"❌ Hata: {str(e)}"
-        bot.reply_to(m, error_msg)
+        bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (V2 Final)...")
+print("Bot Başlatıldı (Gemini 2.5 Flash)...")
 bot.polling(non_stop=True)
