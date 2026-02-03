@@ -1,13 +1,9 @@
 pyTelegramBotAPI
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
 moviepy==1.0.3
 requests
 edge-tts
-imageio-ffmpeg
-urllib3
-google-generativeai==0.8.3
 Pillow
 numpy
+decorator==4.4.2
+imageio==2.4.1
+imageio-ffmpeg
