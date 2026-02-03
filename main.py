@@ -5,6 +5,7 @@ import random
 import subprocess
 import numpy as np
 import textwrap
+import time
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 
@@ -56,7 +57,7 @@ def get_script(topic):
     except:
         pass
 
-    return "When I looked in the mirror, it was not me anymore. Something else was smiling back at me. I tried to scream, but nothing came out."
+    return f"A {topic} story that will scare you in seconds!"
 
 def make_hook_script(script):
     sentences = script.replace("!", ".").replace("?", ".").split(".")
@@ -176,20 +177,23 @@ def create_subtitles(text, total_duration, video_size):
     return concatenate_videoclips(clips)
 
 # --- 4. MONTAJ ---
-def build_video(script):
+def build_video(script, mode="final"):
+    """
+    mode: 'test' = hızlı üretim, düşük kalite
+          'final' = yüksek kalite, YouTube Shorts için ideal
+    """
     try:
         generate_tts(script, "voice.mp3")
         audio = AudioFileClip("voice.mp3")
 
         paths = get_multiple_videos(audio.duration)
         if not paths:
-            return "Görüntü bulunamadı."
+            return "No video clips found."
 
         video_clips = []
 
         for p in paths:
             c = VideoFileClip(p)
-
             new_h = 1080
             new_w = int((new_h * (c.w / c.h)) // 2) * 2
             c = c.resize(height=new_h, width=new_w)
@@ -208,19 +212,28 @@ def build_video(script):
             main_video = main_video.subclip(0, audio.duration)
 
         main_video = main_video.set_audio(audio)
-
         subs = create_subtitles(script, main_video.duration, main_video.size)
         final_result = CompositeVideoClip([main_video, subs])
+
+        # --- MODE OPTİMİZASYONU ---
+        if mode == "test":
+            fps = 24
+            preset = "fast"
+            bitrate = "2000k"
+        else:  # final
+            fps = 30
+            preset = "medium"
+            bitrate = "4000k"
 
         final_result.write_videofile(
             "final_video.mp4",
             codec="libx264",
             audio_codec="aac",
-            fps=30,
-            preset="medium",
-            bitrate="4000k",
+            fps=fps,
+            preset=preset,
+            bitrate=bitrate,
             ffmpeg_params=["-pix_fmt", "yuv420p"],
-            threads=4
+            threads=2
         )
 
         for c in video_clips:
@@ -230,58 +243,47 @@ def build_video(script):
         return "final_video.mp4"
 
     except Exception as e:
-        return f"Hata: {str(e)}"
+        return f"Error: {str(e)}"
 
-# --- 5. DİNAMİK YOUTUBE AÇIKLAMA (HİKÂYEYE DAYALI, İNGİLİZCE) ---
+# --- 5. DİNAMİK AÇIKLAMA (İNGİLİZCE, HİKÂYEYE DAYALI) ---
 def generate_story_based_description(script, topic):
-    """
-    Videodaki hikâyeye uygun, İngilizce açıklama ve hashtagler üretir.
-    """
-    # Hikâyeden rastgele bir cümle seçerek hook yap
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
     hook = sentences[0] if sentences else f"A terrifying {topic} story you must watch!"
-
     calls_to_action = [
         "Like, comment, and subscribe for more! 🔔",
         "Don't forget to like and share this scary story! 👻",
         "Enjoyed it? Hit like and subscribe for more! 🎬"
     ]
-
     hashtags = [
         f"#{topic.replace(' ', '')}",
-        "#horror",
-        "#scary",
-        "#shorts",
-        "#creepy",
-        "#viral",
-        "#thriller",
-        "#mystery"
+        "#horror", "#scary", "#shorts", "#creepy", "#viral", "#thriller", "#mystery"
     ]
-
     import random
     cta = random.choice(calls_to_action)
     hashtags_text = " ".join(hashtags)
-
     return f"{hook}\n\n{cta}\n\n{hashtags_text}"
 
 # --- TELEGRAM ---
 @bot.message_handler(commands=['video'])
 def handle_video(message):
-    args = message.text.split(maxsplit=1)
+    args = message.text.split(maxsplit=2)
     if len(args) < 2:
         bot.reply_to(message, "Please provide a topic.")
         return
 
     topic = args[1]
-    bot.reply_to(message, f"🎥 Processing '{topic}'...")
+    mode = "test" if len(args) > 2 and args[2].lower() == "test" else "final"
+
+    bot.reply_to(message, f"🎥 Processing '{topic}' in {mode} mode...")
 
     script = get_script(topic)
     script = make_hook_script(script)
 
-    video_path = build_video(script)
+    video_path = build_video(script, mode=mode)
 
     if "final_video" in video_path:
         description = generate_story_based_description(script, topic)
+        time.sleep(2)  # güvenli yükleme için kısa bekleme
         with open(video_path, 'rb') as v:
             bot.send_video(
                 message.chat.id,
@@ -291,7 +293,7 @@ def handle_video(message):
     else:
         bot.reply_to(message, video_path)
 
-# Daha stabil polling
+# --- STABIL POLLING ---
 while True:
     try:
         bot.polling(none_stop=True, interval=0, timeout=60)
