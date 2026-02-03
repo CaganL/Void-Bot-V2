@@ -72,12 +72,12 @@ def get_multiple_videos(total_duration):
     headers = {"Authorization": PEXELS_API_KEY}
 
     queries = [
-        "dark hallway",
-        "creepy room",
-        "abandoned house",
-        "night corridor",
-        "horror atmosphere",
-        "empty hospital corridor"
+        "dark room",
+        "creepy mirror",
+        "empty hallway night",
+        "shadow corridor",
+        "abandoned room",
+        "dark bathroom mirror"
     ]
 
     paths = []
@@ -254,4 +254,9 @@ def handle_video(message):
     else:
         bot.reply_to(message, video_path)
 
-bot.polling()
+# Daha stabil polling
+while True:
+    try:
+        bot.polling(none_stop=True, interval=0, timeout=60)
+    except Exception as e:
+        print("Polling error, restarting:", e)
