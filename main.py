@@ -6,9 +6,9 @@ import asyncio
 import edge_tts
 import numpy as np
 import textwrap
-import math
 from PIL import Image, ImageDraw, ImageFont 
-from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, ConcatenateVideoClip
+# DÜZELTME: ConcatenateVideoClip yerine concatenate_videoclips eklendi
+from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
@@ -46,7 +46,6 @@ def get_script(topic):
     if ai_response:
         return ai_response, None
     
-    # Yedek (Uzun versiyonları seç)
     topic_lower = topic.lower()
     if "horror" in topic_lower: script = BACKUP_SCRIPTS["horror"]
     elif "space" in topic_lower: script = BACKUP_SCRIPTS["space"]
@@ -61,7 +60,6 @@ def try_google_ai(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
     headers = {'Content-Type': 'application/json'}
     
-    # PROMPT GÜNCELLEMESİ: Artık 120 kelimelik HİKAYE istiyoruz.
     prompt = (
         f"Write a viral, scary or engaging story about '{topic}' for a YouTube Short. "
         "It must be approximately 100 to 120 words long (approx 45-60 seconds spoken). "
@@ -80,33 +78,27 @@ def try_google_ai(topic):
 def create_dynamic_subtitles(text, total_duration, video_size):
     W, H = video_size
     font_path = download_font()
-    fontsize = int(W / 14) # Biraz daha kibar font
+    fontsize = int(W / 14) 
     try: font = ImageFont.truetype(font_path, fontsize)
     except: font = ImageFont.load_default()
 
-    # 1. Metni Cümlelere Böl
-    # Metni noktalardan bölüyoruz ki anlamlı parçalar olsun
+    # Metni Cümlelere Böl
     sentences = text.replace(".", ".|").replace("?", "?|").replace("!", "!|").split("|")
     chunks = [s.strip() for s in sentences if s.strip()]
     
-    # Eğer çok az parça varsa (nokta yoksa), kelime sayısına göre böl
     if len(chunks) < 3:
         words = text.split()
-        chunk_size = 15 # Her ekranda 15 kelime
+        chunk_size = 15 
         chunks = [' '.join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
-    # 2. Her parçanın süresini hesapla
-    # Basit yöntem: Toplam süreyi parça sayısına bölüyoruz.
     duration_per_chunk = total_duration / len(chunks)
     
     clips = []
     
-    # 3. Her parça için bir resim oluştur
     for chunk in chunks:
         img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         
-        # Metni ekrana sığdır
         char_width = fontsize * 0.45 
         max_chars = int((W * 0.85) / char_width)
         wrapper = textwrap.TextWrapper(width=max_chars)
@@ -117,20 +109,17 @@ def create_dynamic_subtitles(text, total_duration, video_size):
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
         
-        # Konum: ALT ORTA (Daha profesyonel durur)
         x_pos = (W - text_w) / 2
-        y_pos = (H * 0.75) - (text_h / 2) # Ekranın %75 aşağısı
+        y_pos = (H * 0.75) - (text_h / 2) 
         
-        # Siyah "Glow" Efekti (Daha okunaklı)
         stroke_w = 4
         draw.text((x_pos, y_pos), caption_new, font=font, fill="#FFD700", align="center", stroke_width=stroke_w, stroke_fill="black")
         
-        # Klibe çevir ve listeye ekle
         clip = ImageClip(np.array(img)).set_duration(duration_per_chunk)
         clips.append(clip)
         
-    # Tüm parçaları birleştirip tek bir video klibi yap
-    return ConcatenateVideoClip(clips)
+    # DÜZELTME: concatenate_videoclips kullanıldı
+    return concatenate_videoclips(clips)
 
 # --- 5. DİĞER FONKSİYONLAR ---
 async def generate_voice_over(text, output_file="voiceover.mp3"):
@@ -153,7 +142,6 @@ def get_stock_footage(query, duration):
         for video in data.get("videos", []):
             files = video.get("video_files", [])
             if files:
-                # En yüksek kaliteyi değil, HD (yaklaşık 720p/1080p) olanı al (Hız için)
                 good_files = [f for f in files if f["height"] > 700]
                 if good_files:
                     video_files.append(random.choice(good_files)["link"])
@@ -171,23 +159,18 @@ def create_video(topic, script):
     try:
         asyncio.run(generate_voice_over(script))
         
-        # Videoyu bul
-        video_path = get_stock_footage(topic, 10) # Süre sembolik, video looplanacak
+        video_path = get_stock_footage(topic, 10) 
         if not video_path: video_path = get_stock_footage("dark aesthetic", 10)
         if not video_path: return "Video bulunamadı."
 
         audio = AudioFileClip("voiceover.mp3")
         
-        # VİDEO LOOP (Döngü)
-        # Eğer stok video ses kaydından kısaysa, videoyu başa sarıp tekrar oynatırız.
         video_input = VideoFileClip(video_path)
         if video_input.duration < audio.duration:
-            # Videoyu ses süresi kadar tekrar et (Loop)
             video = video_input.loop(duration=audio.duration)
         else:
             video = video_input.subclip(0, audio.duration)
         
-        # Boyutlandırma
         if video.h > 960: video = video.resize(height=960)
         w, h = video.size
         if w/h > 9/16:
@@ -196,7 +179,6 @@ def create_video(topic, script):
         
         video = video.set_audio(audio)
         
-        # ALTYAZI (DİNAMİK)
         try:
             subtitle_clip = create_dynamic_subtitles(script, video.duration, video.size)
             final_video = CompositeVideoClip([video, subtitle_clip])
@@ -206,7 +188,6 @@ def create_video(topic, script):
 
         final_video.write_videofile("final_short.mp4", codec="libx264", audio_codec="aac", fps=24, preset='ultrafast', threads=1)
         
-        # Temizlik (Hata almamak için close önemlidir)
         video_input.close() 
         video.close()
         audio.close()
@@ -234,7 +215,6 @@ def handle_video_command(message):
     if result and "Hata" in result:
         bot.reply_to(message, f"❌ {result}")
     elif result:
-        # Metin çok uzunsa mesaja sığdırma, sadece başını yaz
         preview_text = script[:100] + "..."
         caption = f"🎬 **Konu:** {topic}\n📜 **Hikaye:** {preview_text}"
         if warning: caption += f"\n\n{warning}"
