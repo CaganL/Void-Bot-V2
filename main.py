@@ -62,7 +62,6 @@ def get_script_and_metadata(topic):
             r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
             if r.status_code == 200:
                 raw = r.json()['candidates'][0]['content']['parts'][0]['text']
-                
                 try:
                     start = raw.find('{')
                     end = raw.rfind('}') + 1
@@ -70,10 +69,8 @@ def get_script_and_metadata(topic):
                         data = json.loads(raw[start:end])
                         return data.get("script", raw), data.get("mood", "cinematic"), f"#shorts {topic}"
                 except: pass
-                
                 if len(raw.split()) > 20:
                     return raw.replace("*", "").strip(), "cinematic", f"#shorts {topic}"
-                    
         except Exception as e:
             print(f"Deneme {attempt}: {e}")
             time.sleep(1)
@@ -94,6 +91,7 @@ def download_music(mood, filename="bg.mp3"):
         return True
     except: return False
 
+# --- GÜNCELLENDİ: Video İndirme (4K yerine 1080p tercihi) ---
 def get_stock_videos(topic, duration):
     headers = {"Authorization": PEXELS_API_KEY}
     queries = [topic, "abstract background", "nature", "dark"]
@@ -106,9 +104,27 @@ def get_stock_videos(topic, duration):
             data = r.json().get("videos", [])
             for v in data:
                 if curr_dur >= duration: break
-                link = max(v["video_files"], key=lambda x: x["height"])["link"]
+                
+                # --- YENİ MANTIK: En uygun çözünürlüğü bul ---
+                best_link = None
+                # Hedef yükseklik: 1080p (Full HD)
+                target_height = 1080
+                min_diff = float('inf')
+
+                for file_info in v["video_files"]:
+                    # Sadece yüksekliği makul olanları değerlendir (örn: > 600px)
+                    if file_info["height"] > 600:
+                        diff = abs(file_info["height"] - target_height)
+                        if diff < min_diff:
+                            min_diff = diff
+                            best_link = file_info["link"]
+                
+                # Eğer uygun bir link bulamazsa eskisi gibi en büyüğü al
+                if not best_link:
+                     best_link = max(v["video_files"], key=lambda x: x["height"])["link"]
+
                 path = f"v{i}.mp4"
-                with open(path, "wb") as f: f.write(requests.get(link).content)
+                with open(path, "wb") as f: f.write(requests.get(best_link).content)
                 c = VideoFileClip(path)
                 paths.append(path)
                 curr_dur += c.duration
@@ -192,9 +208,10 @@ def build_final_video(topic, script, mood):
         final = CompositeVideoClip([main, subs])
         
         out = f"final_{int(time.time())}.mp4"
-        # --- İŞTE ÇÖZÜM: BITRATE AYARI EKLENDİ ---
-        # bitrate="2500k" sayesinde dosya boyutu 20-30MB civarında tutulacak ve Telegram kabul edecek.
-        final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", bitrate="2500k", threads=4)
+        # --- GÜNCELLENDİ: Render Ayarları ---
+        # bitrate="2500k": Dosya boyutunu küçültür.
+        # ffmpeg_params=["-pix_fmt", "yuv420p"]: Siyah ekran sorununu çözer (Genel uyumluluk).
+        final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", bitrate="2500k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
         temp.append(out)
         
         for c in clips: c.close()
@@ -228,5 +245,5 @@ def handle(m):
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (413 Fix)...")
+print("Bot Başlatıldı (Siyah Ekran Fix)...")
 bot.polling(non_stop=True)
