@@ -232,6 +232,41 @@ def build_video(script):
     except Exception as e:
         return f"Hata: {str(e)}"
 
+# --- 5. DİNAMİK YOUTUBE AÇIKLAMA ---
+def generate_dynamic_youtube_description(topic):
+    """
+    Her seferinde sıfırdan üretilen, konuya özel viral ve SEO uyumlu açıklama.
+    """
+    hooks = [
+        f"😱 Şok edici bir {topic} hikayesi! Tüyler ürpertici kısa bir deneyim.",
+        f"👻 {topic} ile ilgili inanılmaz bir korku hikayesi! Hemen izle!",
+        f"⚡️ Korku sevenler için {topic} hikayesi! Kısa ve gerilim dolu."
+    ]
+
+    calls_to_action = [
+        "Beğenmeyi, yorum yapmayı ve kanalımıza abone olmayı unutmayın! 🔔",
+        "Yorumu unutma, beğen ve arkadaşlarınla paylaş! 👻",
+        "Hikayeyi beğendiysen like bas ve kanalımıza abone ol! 🎬"
+    ]
+
+    hashtags = [
+        f"#{topic.replace(' ', '')}",
+        "#horror",
+        "#scary",
+        "#shorts",
+        "#creepy",
+        "#viral",
+        "#thriller",
+        "#mystery"
+    ]
+
+    import random
+    hook = random.choice(hooks)
+    cta = random.choice(calls_to_action)
+    hashtags_text = " ".join(hashtags)
+
+    return f"{hook}\n\n{cta}\n\n{hashtags_text}"
+
 # --- TELEGRAM ---
 @bot.message_handler(commands=['video'])
 def handle_video(message):
@@ -249,8 +284,13 @@ def handle_video(message):
     video_path = build_video(script)
 
     if "final_video" in video_path:
+        description = generate_dynamic_youtube_description(topic)
         with open(video_path, 'rb') as v:
-            bot.send_video(message.chat.id, v, caption=f"🎬 Konu: {topic}")
+            bot.send_video(
+                message.chat.id,
+                v,
+                caption=f"🎬 Konu: {topic}\n\nAçıklama:\n{description}"
+            )
     else:
         bot.reply_to(message, video_path)
 
