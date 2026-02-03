@@ -164,14 +164,14 @@ def build_video(script, mode="final"):
         video_clips = []
         for p in paths:
             c = VideoFileClip(p)
-            # --- Resize güvenli (even width/height) ---
+            # --- Resize güvenli ---
             new_h = 1080
             new_w = int(new_h * (c.w / c.h))
-            new_w = new_w + (new_w % 2)
+            new_w += new_w % 2
             c = c.resize(height=new_h, width=new_w)
             # --- Crop güvenli ---
             target_w = int(new_h * (9 / 16))
-            target_w = target_w + (target_w % 2)
+            target_w += target_w % 2
             if c.w > target_w:
                 x1 = int((c.w - target_w) / 2)
                 c = c.crop(x1=x1, width=target_w, height=new_h)
@@ -197,14 +197,9 @@ def build_video(script, mode="final"):
         subs = create_subtitles(script, main_video.duration, main_video.size)
         final_result = CompositeVideoClip([main_video, subs])
         # --- Mode optimizasyonu ---
-        if mode == "test":
-            fps = 24
-            preset = "fast"
-            bitrate = "2000k"
-        else:
-            fps = 30
-            preset = "medium"
-            bitrate = "4000k"
+        fps = 30 if mode == "final" else 24
+        preset = "medium" if mode == "final" else "fast"
+        bitrate = "4000k" if mode == "final" else "2000k"
         final_result.write_videofile(
             "final_video.mp4",
             codec="libx264",
@@ -225,18 +220,19 @@ def build_video(script, mode="final"):
     except Exception as e:
         return f"Error: {str(e)}"
 
-# --- DİNAMİK AÇIKLAMA ---
+# --- DİNAMİK AÇIKLAMA & HASHTAG OPTİMİZASYONU ---
 def generate_story_based_description(script, topic):
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+    hook = sentences[0] if sentences else f"Watch this amazing {topic} story!"
+    if len(hook.split()) < 4:
+        hook += " Keep watching to find out what happens next!"
     if topic.lower() in ["horror", "scary", "creepy", "thriller"]:
-        hook = sentences[0] if sentences else f"A terrifying {topic} story you must watch!"
         hashtags = [f"#{topic.replace(' ', '')}", "#horror", "#scary", "#shorts", "#creepy", "#viral", "#thriller"]
     elif topic.lower() in ["motivation", "success", "inspiration", "selfhelp"]:
-        hook = sentences[0] if sentences else f"Push yourself, because greatness doesn’t wait!"
         hashtags = [f"#{topic.replace(' ', '')}", "#motivation", "#success", "#shorts", "#inspiration", "#viral"]
     else:
-        hook = sentences[0] if sentences else f"Watch this amazing {topic} story!"
         hashtags = [f"#{topic.replace(' ', '')}", "#shorts", "#viral"]
+    hashtags = list(dict.fromkeys(hashtags))
     calls_to_action = [
         "Like, comment, and subscribe for more! 🔔",
         "Don't forget to like and share! 👀",
