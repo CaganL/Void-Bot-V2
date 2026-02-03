@@ -40,24 +40,24 @@ def get_safe_font():
         except: pass
     return font_path if os.path.exists(font_path) else None
 
-# --- SES MOTORU (FABRİKA AYARLARINA DÖNÜLDÜ - GARANTİ ÇALIŞIR) ---
 def generate_tts(text, output="voice.mp3"):
     try:
-        # Hız/Pitch ayarlarını kaldırdık, standart ve temiz ses.
         subprocess.run(["edge-tts", "--voice", "en-US-ChristopherNeural", "--text", text, "--write-media", output], check=True)
         return True
     except: return False
 
+# --- GEMINI (GARANTİLİ SÜRÜM) ---
 def get_script_and_metadata(topic):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # Model: gemini-1.5-flash (En stabil olan)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # KANCA (HOOK) ÖZELLİĞİ DURUYOR
     prompt = (
-        f"Act as a viral content creator. Write a script about '{topic}'.\n"
-        "1. CRITICAL: Start with a SHOCKING HOOK (e.g., 'You won't believe this...', 'Stop doing this...').\n"
-        "2. Length: 100-130 words.\n"
-        "3. VISUALS: Provide 3-4 english search terms for stock videos.\n"
-        "4. Output JSON: {{ \"script\": \"...\", \"mood\": \"horror/motivation/happy\", \"keywords\": [\"term1\", \"term2\"], \"description\": \"...\" }}"
+        f"You are a viral script writer. Write a script about '{topic}'.\n"
+        "Rules:\n"
+        "1. START WITH A HOOK immediately (e.g. 'You won't believe...').\n"
+        "2. Length: 100-130 words (approx 5-6 sentences).\n"
+        "3. Provide 3 English visual keywords.\n"
+        "4. Format: JSON {{ \"script\": \"...\", \"keywords\": [\"...\", \"...\"] }}"
     )
     
     for attempt in range(3):
@@ -65,26 +65,37 @@ def get_script_and_metadata(topic):
             r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
             if r.status_code == 200:
                 raw = r.json()['candidates'][0]['content']['parts'][0]['text']
-                start = raw.find('{')
-                end = raw.rfind('}') + 1
-                if start != -1 and end != -1:
-                    data = json.loads(raw[start:end])
-                    return data.get("script", raw), data.get("mood", "cinematic"), data.get("keywords", [topic]), f"#shorts {topic}"
+                # 1. JSON Denemesi
+                try:
+                    start = raw.find('{')
+                    end = raw.rfind('}') + 1
+                    if start != -1 and end != -1:
+                        data = json.loads(raw[start:end])
+                        return data.get("script", raw), "cinematic", data.get("keywords", [topic]), f"#shorts {topic}"
+                except: 
+                    # 2. JSON Bozuksa: Metni olduğu gibi al (Yeter ki video uzun olsun)
+                    clean_text = raw.replace("```json", "").replace("```", "").strip()
+                    if len(clean_text.split()) > 30: # Eğer dolu bir metinse kabul et
+                        return clean_text, "cinematic", [topic], f"#shorts {topic}"
         except: time.sleep(1)
-    return f"Did you know about {topic}? It is mind-blowing!", "cinematic", [topic], f"#shorts {topic}"
+    
+    # --- YENİ YEDEK SENARYO (UZUN) ---
+    # Eğer Gemini tamamen çökerse bu metni okuyacak.
+    fallback_script = (
+        f"Have you ever heard the incredible story of {topic}? It is honestly one of the most fascinating things in the world. "
+        "Most people have no idea about the hidden details behind this. Experts have been studying it for years and what they found is shocking. "
+        "If you look closely, you will see why it matters so much. Stay tuned because I am going to reveal the secret right now. "
+        "Make sure to subscribe for more mind blowing facts like this every day."
+    )
+    return fallback_script, "cinematic", [topic], f"#shorts {topic}"
 
 def download_music(mood, filename="bg.mp3"):
     library = {
-        "horror": "https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3",
-        "motivation": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
         "cinematic": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"
     }
     if os.path.exists(filename): os.remove(filename)
     try:
-        url = library.get("cinematic")
-        for k in library: 
-            if k in mood.lower(): url = library[k]
-        r = requests.get(url, timeout=15)
+        r = requests.get(library["cinematic"], timeout=15)
         if r.status_code == 200:
             with open(filename, "wb") as f: f.write(r.content)
             if os.path.getsize(filename) < 50000:
@@ -119,10 +130,9 @@ def get_stock_videos(keywords, duration):
                 c.close()
                 i += 1
         except: pass
-    if not paths: raise Exception("Görsel video bulunamadı.")
+    if not paths: raise Exception("Görsel video bulunamadı. Pexels Key kontrol et.")
     return paths
 
-# --- BÜYÜK ALTYAZI ÖZELLİĞİ DURUYOR ---
 def create_subs(text, duration, size):
     W, H = size
     font_path = get_safe_font()
@@ -142,27 +152,23 @@ def create_subs(text, duration, size):
     
     clips = []
     dur_per = duration / len(chunks)
-    
     for chunk in chunks:
         img = Image.new('RGBA', (int(W), int(H)), (0,0,0,0))
         draw = ImageDraw.Draw(img)
         lines = textwrap.wrap(chunk.upper(), width=15)
         y = H * 0.60
-        
         for line in lines:
             bbox = draw.textbbox((0,0), line, font=font)
             w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
             draw.rectangle([(W-w)/2 - 20, y - 20, (W+w)/2 + 20, y + h + 20], fill=(0,0,0,230))
             draw.text(((W-w)/2, y), line, font=font, fill="#FFD700", stroke_width=3, stroke_fill="black")
             y += h + 30
-            
         clips.append(ImageClip(np.array(img)).set_duration(dur_per))
     return concatenate_videoclips(clips)
 
 def build_final_video(topic, script, mood, keywords):
     temp = []
     try:
-        # Seslendirme artık Mood parametresi almıyor, düz ve güvenli çalışıyor.
         generate_tts(script, "voice.mp3")
         temp.append("voice.mp3")
         audio = AudioFileClip("voice.mp3")
@@ -199,8 +205,7 @@ def build_final_video(topic, script, mood, keywords):
                 else: bg = bg.subclip(0, main.duration)
                 final_audio = CompositeAudioClip([audio, bg])
                 main = main.set_audio(final_audio)
-            except:
-                main = main.set_audio(audio)
+            except: main = main.set_audio(audio)
         else:
             main = main.set_audio(audio)
             
@@ -224,23 +229,17 @@ def handle(m):
             bot.reply_to(m, "Konu girin: /video [Konu]")
             return
         topic = m.text.split(maxsplit=1)[1]
-        msg = bot.reply_to(m, f"🎬 '{topic}' için viral içerik hazırlanıyor...")
-        
+        msg = bot.reply_to(m, f"🎬 '{topic}' hazırlanıyor...")
         script, mood, keywords, desc = get_script_and_metadata(topic)
-        
-        keywords_str = ", ".join(keywords) if isinstance(keywords, list) else keywords
-        bot.edit_message_text(f"🎥 Senaryo: {script[:50]}...\nMood: {mood}\nGörseller: {keywords_str}", m.chat.id, msg.message_id)
-        
+        bot.edit_message_text(f"🎥 Senaryo yazıldı ({len(script.split())} kelime)...", m.chat.id, msg.message_id)
         path, files = build_final_video(topic, script, mood, keywords)
-        
         with open(path, 'rb') as v:
             bot.send_video(m.chat.id, v, caption=desc)
         cleanup_files(files)
         bot.delete_message(m.chat.id, msg.message_id)
-        
     except Exception as e:
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (V11 - Stabil & Pro)...")
+print("Bot Başlatıldı (V12 - Guaranteed Long)...")
 bot.polling(non_stop=True)
