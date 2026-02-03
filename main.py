@@ -40,7 +40,7 @@ def generate_tts(text, output="voice.mp3"):
     ]
     subprocess.run(cmd, check=True)
 
-# --- 1. SENARYO MOTORU ---
+# --- 1. SENARYO ---
 def get_script(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = (
@@ -52,14 +52,12 @@ def get_script(topic):
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         response = requests.post(url, json=payload, timeout=15)
         if response.status_code == 200:
-            text = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-            return text
+            return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
     except:
         pass
 
     return "When I looked in the mirror, it was not me anymore. Something else was smiling back at me. I tried to scream, but nothing came out."
 
-# --- Hook'u başa alma ---
 def make_hook_script(script):
     sentences = script.replace("!", ".").replace("?", ".").split(".")
     sentences = [s.strip() for s in sentences if s.strip()]
@@ -69,7 +67,7 @@ def make_hook_script(script):
     rest = ". ".join(sentences[:-1])
     return f"{hook}. {rest}."
 
-# --- 2. VİDEO İNDİRİCİ ---
+# --- 2. VİDEO İNDİRME ---
 def get_multiple_videos(total_duration):
     headers = {"Authorization": PEXELS_API_KEY}
 
@@ -133,7 +131,7 @@ def split_for_subtitles(text):
 def create_subtitles(text, total_duration, video_size):
     W, H = video_size
     font_path = download_font()
-    fontsize = int(W / 10)
+    fontsize = int(W / 9)
 
     try:
         font = ImageFont.truetype(font_path, fontsize)
@@ -149,19 +147,27 @@ def create_subtitles(text, total_duration, video_size):
         img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        wrapper = textwrap.TextWrapper(width=15)
+        wrapper = textwrap.TextWrapper(width=16)
         caption_wrapped = '\n'.join(wrapper.wrap(text=chunk.upper()))
 
         bbox = draw.textbbox((0, 0), caption_wrapped, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
+        box_padding = 20
+        box_x1 = (W - tw) / 2 - box_padding
+        box_y1 = H * 0.75 - box_padding
+        box_x2 = (W + tw) / 2 + box_padding
+        box_y2 = H * 0.75 + th + box_padding
+
+        draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill=(0, 0, 0, 160))
+
         draw.text(
-            ((W - tw) / 2, H * 0.7),
+            ((W - tw) / 2, H * 0.75),
             caption_wrapped,
             font=font,
             fill="#FFFFFF",
             align="center",
-            stroke_width=4,
+            stroke_width=3,
             stroke_fill="black"
         )
 
@@ -210,8 +216,9 @@ def build_video(script):
             "final_video.mp4",
             codec="libx264",
             audio_codec="aac",
-            fps=24,
-            preset="ultrafast",
+            fps=30,
+            preset="medium",
+            bitrate="4000k",
             ffmpeg_params=["-pix_fmt", "yuv420p"],
             threads=4
         )
