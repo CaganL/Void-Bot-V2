@@ -14,7 +14,7 @@ TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Pillow Versiyon Hatası Düzeltmesi (LANCZOS artık ANTIALIAS yerine geçer)
+# Pillow Versiyon Hatası Düzeltmesi
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS
 
@@ -27,7 +27,6 @@ MUSIC_LIBRARY = {
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
-# --- GÜVENLİ İNDİRME ---
 def download_secure(url, target):
     try:
         r = requests.get(url, stream=True, timeout=20)
@@ -39,7 +38,6 @@ def download_secure(url, target):
     except: return False
     return False
 
-# --- AI HİKAYE VE MOOD ---
 def get_ai_data(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = f"Write a viral story about {topic} in 115 words. End with: MOOD: [horror/motivation/calm/info]"
@@ -52,7 +50,6 @@ def get_ai_data(topic):
         return raw.split("MOOD:")[0].replace("*", "").strip(), mood
     except: return "A story of silence...", "calm"
 
-# --- DEV ALTYAZI ---
 def draw_subs(text, duration, size):
     W, H = size
     font_p = "Oswald-Bold.ttf"
@@ -75,13 +72,11 @@ def draw_subs(text, duration, size):
         clips.append(ImageClip(np.array(img)).set_duration(dur_per))
     return concatenate_videoclips(clips)
 
-# --- MONTAJ ---
 def make_video(topic, script, mood):
     try:
         asyncio.run(edge_tts.Communicate(script, "en-US-ChristopherNeural").save("v.mp3"))
         audio = AudioFileClip("v.mp3")
         
-        # Müzik İşleme (Sadece başarıyla inerse eklenir)
         final_audio = audio
         m_url = MUSIC_LIBRARY.get(mood)
         if download_secure(m_url, "bg.mp3"):
@@ -91,7 +86,6 @@ def make_video(topic, script, mood):
                 final_audio = CompositeAudioClip([audio, bg])
             except: pass
             
-        # Pexels Sahneleri
         h = {"Authorization": PEXELS_API_KEY}
         r = requests.get(f"https://api.pexels.com/videos/search?query={topic}&per_page=5&orientation=portrait", headers=h).json()
         video_clips = []
@@ -124,7 +118,6 @@ def start_video(m):
         with open(res, 'rb') as v: bot.send_video(m.chat.id, v, caption=f"✨ Mood: {mood.upper()}")
     else: bot.reply_to(m, res)
 
-# Railway çakışması için temiz başlangıç
 try:
     bot.remove_webhook()
     time.sleep(1)
