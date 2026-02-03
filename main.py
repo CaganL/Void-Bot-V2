@@ -6,21 +6,21 @@ import subprocess
 import numpy as np
 import textwrap
 import time
+import json
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips, afx, CompositeAudioClip
 
-# --- AYARLAR ---
-# Buraya kendi API keylerini tırnak içine yaz
-TELEGRAM_TOKEN = "BURAYA_TELEGRAM_TOKEN"
-PEXELS_API_KEY = "BURAYA_PEXELS_KEY"
-PIXABAY_API_KEY = "BURAYA_PIXABAY_KEY" 
-GEMINI_API_KEY = "BURAYA_GEMINI_KEY"
+# --- AYARLAR (Railway Variables'dan Otomatik Çeker) ---
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
+PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY") 
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# Pillow Yama
+# Pillow Sürüm Yaması (Hata Önleyici)
 if not hasattr(Image, 'ANTIALIAS'):
-    Image.ANTIALIAS = Image.LANCZOS
+    Image.ANTIALIAS = getattr(Image, 'Resampling', Image).LANCZOS
 
 # --- TEMİZLİK ---
 def cleanup_files(file_list):
@@ -65,13 +65,12 @@ def get_script_and_metadata(topic):
         try:
             r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
             if r.status_code == 200:
-                import json
                 # Temizleme (Markdown ```json ... ``` kısımlarını siler)
                 raw = r.json()['candidates'][0]['content']['parts'][0]['text']
                 raw = raw.replace("```json", "").replace("```", "").strip()
                 data = json.loads(raw)
                 
-                # Kontrol: Script çok kısaysa hata say
+                # Kontrol: Script çok kısaysa hata say ve tekrar dene
                 if len(data.get("script", "").split()) < 50:
                     raise ValueError("Script too short")
                     
@@ -80,7 +79,7 @@ def get_script_and_metadata(topic):
             print(f"Deneme {attempt+1} başarısız: {e}")
             time.sleep(1)
     
-    # Hepsi başarısız olursa uzun bir yedek metin
+    # Hepsi başarısız olursa uzun bir yedek metin (3 sn video olmasın diye)
     fallback_script = (
         f"Did you know about {topic}? It is one of the most fascinating topics in the world. "
         "Many people don't realize the hidden secrets behind it. "
@@ -92,7 +91,7 @@ def get_script_and_metadata(topic):
 
 # --- MÜZİK ---
 def download_music(mood, filename="bg.mp3"):
-    # Manuel Liste (API Key patlamasın diye)
+    # Manuel Liste (Güvenli Linkler)
     library = {
         "horror": "https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3",
         "motivation": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
@@ -199,7 +198,7 @@ def build_final_video(topic, script, mood):
         clips = []
         for p in v_paths:
             c = VideoFileClip(p)
-            # Boyut Garantisi (Çift Sayı)
+            # Boyut Garantisi (Çift Sayı - Hata Önleyici)
             nh = 1080
             nw = int(nh * c.w / c.h)
             if nw % 2 != 0: nw += 1
@@ -236,7 +235,7 @@ def build_final_video(topic, script, mood):
         final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="medium", threads=4)
         temp.append(out)
         
-        # Close
+        # Kapat
         for c in clips: c.close()
         audio.close()
         
@@ -248,6 +247,10 @@ def build_final_video(topic, script, mood):
 @bot.message_handler(commands=['video'])
 def handle(m):
     try:
+        # Eğer sadece /video yazıldıysa uyarı ver
+        if len(m.text.split()) < 2:
+            bot.reply_to(m, "Lütfen bir konu yazın: /video [Konu]")
+            return
         topic = m.text.split(maxsplit=1)[1]
     except:
         bot.reply_to(m, "Konu yazın: /video Konu")
@@ -255,7 +258,7 @@ def handle(m):
         
     msg = bot.reply_to(m, f"🎬 '{topic}' hazırlanıyor... (Bu 1-2 dk sürebilir)")
     
-    # 1. Gemini'den Veri Al (Retry ile)
+    # 1. Gemini'den Veri Al (3 Deneme Hakkı Var)
     script, mood, desc = get_script_and_metadata(topic)
     
     # 2. Video Yap
@@ -263,6 +266,7 @@ def handle(m):
     
     if path:
         with open(path, 'rb') as v:
+            # Viral açıklamayı videonun altına ekle
             bot.send_video(m.chat.id, v, caption=desc)
         cleanup_files(files)
         bot.delete_message(m.chat.id, msg.message_id)
@@ -270,4 +274,5 @@ def handle(m):
         bot.reply_to(m, "Video oluşturulamadı.")
         cleanup_files(files)
 
+print("Bot Başlatıldı (Railway Modu)...")
 bot.polling(non_stop=True)
