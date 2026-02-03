@@ -164,19 +164,25 @@ def build_video(script, mode="final"):
         video_clips = []
         for p in paths:
             c = VideoFileClip(p)
-            # --- Resize güvenli (even width) ---
+            # --- Resize güvenli (even width/height) ---
             new_h = 1080
             new_w = int(new_h * (c.w / c.h))
-            new_w = new_w if new_w % 2 == 0 else new_w + 1
+            new_w = new_w + (new_w % 2)
             c = c.resize(height=new_h, width=new_w)
+            # --- Crop güvenli ---
             target_w = int(new_h * (9 / 16))
-            target_w = target_w if target_w % 2 == 0 else target_w + 1
+            target_w = target_w + (target_w % 2)
             if c.w > target_w:
                 x1 = int((c.w - target_w) / 2)
                 c = c.crop(x1=x1, width=target_w, height=new_h)
+            # --- Final kontrol ---
+            if c.w % 2 != 0:
+                c = c.resize(width=c.w + 1)
+            if c.h % 2 != 0:
+                c = c.resize(height=c.h + 1)
             video_clips.append(c)
         main_video = concatenate_videoclips(video_clips, method="compose")
-        # --- Shorts uyumlu sürede kes ---
+        # --- Shorts süresi ---
         if main_video.duration > 45:
             main_video = main_video.subclip(0, 45)
         elif main_video.duration < 30:
