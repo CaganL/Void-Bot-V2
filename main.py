@@ -6,6 +6,7 @@ import asyncio
 import edge_tts
 import numpy as np
 import textwrap
+import time
 from PIL import Image, ImageDraw, ImageFont 
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 
@@ -14,7 +15,7 @@ TELEGRAM_TOKEN = "8395962603:AAFmuGIsQ2DiUD8nV7ysUjkGbsr1dmGlqKo"
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Müzik Kütüphanesi (URL)
+# Müzik Kütüphanesi
 MUSIC_LIBRARY = {
     "horror": "https://www.chosic.com/wp-content/uploads/2021/07/The-Dead-Are-Coming.mp3",
     "motivation": "https://www.chosic.com/wp-content/uploads/2021/10/Epic-Adventure.mp3",
@@ -27,22 +28,19 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 # --- 1. GEMINI ZEKA MERKEZİ ---
 def get_ai_content(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
-    # Tek seferde hem hikaye hem mood istiyoruz (JSON formatına benzer)
-    prompt = (f"Write a 120 word viral story about {topic}. "
-              "After the story, add a separator '---' and then write ONLY ONE word for the mood: "
-              "Choose from: horror, motivation, calm, or info.")
+    # Gemini'den hem hikaye hem de tek kelimelik mood istiyoruz
+    prompt = (f"Write a viral story about {topic} in 120 words. "
+              "Format: [STORY] your story here [/STORY] [MOOD] horror or motivation or calm or info [/MOOD]")
     
     try:
         response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=15)
-        full_text = response.json()['candidates'][0]['content']['parts'][0]['text']
+        text = response.json()['candidates'][0]['content']['parts'][0]['text']
         
-        if "---" in full_text:
-            parts = full_text.split("---")
-            return parts[0].strip(), parts[1].strip().lower()
-        return full_text, "calm"
+        story = text.split("[STORY]")[1].split("[/STORY]")[0].strip()
+        mood = text.split("[MOOD]")[1].split("[/MOOD]")[0].strip().lower()
+        return story, mood
     except:
-        return "A mysterious error occurred in the system.", "calm"
+        return "The system encountered a logic error.", "calm"
 
 # --- 2. DEV ALTYAZI SİSTEMİ ---
 def create_subtitles(text, total_duration, video_size):
@@ -52,7 +50,7 @@ def create_subtitles(text, total_duration, video_size):
         r = requests.get("https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf")
         with open(font_path, "wb") as f: f.write(r.content)
 
-    fontsize = int(W / 8.5) # Dev boyut
+    fontsize = int(W / 8.5) 
     font = ImageFont.truetype(font_path, fontsize)
     sentences = text.replace(".", ".|").replace("?", "?|").replace("!", "!|").split("|")
     chunks = [s.strip() for s in sentences if s.strip()]
@@ -66,7 +64,6 @@ def create_subtitles(text, total_duration, video_size):
         caption_wrapped = '\n'.join(wrapper.wrap(text=chunk))
         bbox = draw.textbbox((0, 0), caption_wrapped, font=font)
         tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
-        # SARI YAZI + KALIN SİYAH ÇERÇEVE
         draw.text(((W-tw)/2, H*0.65), caption_wrapped, font=font, fill="#FFD700", align="center", stroke_width=7, stroke_fill="black")
         clips.append(ImageClip(np.array(img)).set_duration(duration_per_chunk))
     return concatenate_videoclips(clips)
@@ -78,10 +75,15 @@ def build_video(topic, script, mood):
         asyncio.run(edge_tts.Communicate(script, "en-US-ChristopherNeural").save("voice.mp3"))
         audio = AudioFileClip("voice.mp3")
         
-        # MÜZİK İNDİR (AI'nın belirlediği mood'a göre)
+        # MÜZİK İNDİRME VE KONTROL
         music_url = MUSIC_LIBRARY.get(mood, MUSIC_LIBRARY["calm"])
-        r_music = requests.get(music_url)
-        with open("bg.mp3", "wb") as f: f.write(r_music.content)
+        r_music = requests.get(music_url, stream=True)
+        with open("bg.mp3", "wb") as f:
+            for chunk in r_music.iter_content(chunk_size=1024):
+                if chunk: f.write(chunk)
+        
+        # Dosyanın tam indiğinden emin olmak için kısa bir bekleme
+        time.sleep(2)
         bg = AudioFileClip("bg.mp3").volumex(0.12).set_duration(audio.duration)
         
         from moviepy.audio.AudioClip import CompositeAudioClip
@@ -98,7 +100,6 @@ def build_video(topic, script, mood):
             path = f"p_{i}.mp4"
             with open(path, "wb") as f: f.write(requests.get(link).content)
             c = VideoFileClip(path)
-            # Boyut kuralı (Çift sayı)
             nh = 1080
             nw = int((nh * (c.w / c.h)) // 2) * 2
             c = c.resize(height=nh, width=nw).crop(x1=(nw/2 - 304), width=608, height=1080)
@@ -117,18 +118,17 @@ def build_video(topic, script, mood):
 def handle(message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        bot.reply_to(message, "Lütfen konu yaz. Örnek: `/video space journey`")
+        bot.reply_to(message, "Konu girin.")
         return
     topic = args[1]
-    bot.reply_to(message, f"🎬 Gemini '{topic}' için hikaye yazıyor ve ruh halini belirliyor...")
+    bot.reply_to(message, f"🎭 Gemini '{topic}' analiz ediyor...")
     
     script, mood = get_ai_content(topic)
-    bot.send_message(message.chat.id, f"🧠 AI Kararı:\n🎭 Ruh Hali: {mood.upper()}\n📽️ Montaj başlıyor...")
+    bot.send_message(message.chat.id, f"🧠 AI Kararı: {mood.upper()}\n🎬 Montaj başladı...")
     
     res = build_video(topic, script, mood)
     if "out.mp4" in res:
-        with open(res, 'rb') as v: 
-            bot.send_video(message.chat.id, v, caption=f"✨ Mood: {mood.upper()}\n📝 Konu: {topic}")
-    else: bot.reply_to(message, f"Hata: {res}")
+        with open(res, 'rb') as v: bot.send_video(message.chat.id, v, caption=f"✨ Mood: {mood.upper()}")
+    else: bot.reply_to(message, f"❌ Hata: {res}")
 
 bot.polling()
