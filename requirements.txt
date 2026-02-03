@@ -6,4 +6,4 @@ Pillow
 numpy
 imageio==2.9.0
 imageio-ffmpeg
-decorator
+decorator==4.4.2
