@@ -232,21 +232,19 @@ def build_video(script):
     except Exception as e:
         return f"Hata: {str(e)}"
 
-# --- 5. DİNAMİK YOUTUBE AÇIKLAMA ---
-def generate_dynamic_youtube_description(topic):
+# --- 5. DİNAMİK YOUTUBE AÇIKLAMA (HİKÂYEYE DAYALI, İNGİLİZCE) ---
+def generate_story_based_description(script, topic):
     """
-    Her seferinde sıfırdan üretilen, konuya özel viral ve SEO uyumlu açıklama.
+    Videodaki hikâyeye uygun, İngilizce açıklama ve hashtagler üretir.
     """
-    hooks = [
-        f"😱 Şok edici bir {topic} hikayesi! Tüyler ürpertici kısa bir deneyim.",
-        f"👻 {topic} ile ilgili inanılmaz bir korku hikayesi! Hemen izle!",
-        f"⚡️ Korku sevenler için {topic} hikayesi! Kısa ve gerilim dolu."
-    ]
+    # Hikâyeden rastgele bir cümle seçerek hook yap
+    sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+    hook = sentences[0] if sentences else f"A terrifying {topic} story you must watch!"
 
     calls_to_action = [
-        "Beğenmeyi, yorum yapmayı ve kanalımıza abone olmayı unutmayın! 🔔",
-        "Yorumu unutma, beğen ve arkadaşlarınla paylaş! 👻",
-        "Hikayeyi beğendiysen like bas ve kanalımıza abone ol! 🎬"
+        "Like, comment, and subscribe for more! 🔔",
+        "Don't forget to like and share this scary story! 👻",
+        "Enjoyed it? Hit like and subscribe for more! 🎬"
     ]
 
     hashtags = [
@@ -261,7 +259,6 @@ def generate_dynamic_youtube_description(topic):
     ]
 
     import random
-    hook = random.choice(hooks)
     cta = random.choice(calls_to_action)
     hashtags_text = " ".join(hashtags)
 
@@ -272,11 +269,11 @@ def generate_dynamic_youtube_description(topic):
 def handle_video(message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        bot.reply_to(message, "Lütfen bir konu yaz.")
+        bot.reply_to(message, "Please provide a topic.")
         return
 
     topic = args[1]
-    bot.reply_to(message, f"🎥 '{topic}' işleniyor...")
+    bot.reply_to(message, f"🎥 Processing '{topic}'...")
 
     script = get_script(topic)
     script = make_hook_script(script)
@@ -284,12 +281,12 @@ def handle_video(message):
     video_path = build_video(script)
 
     if "final_video" in video_path:
-        description = generate_dynamic_youtube_description(topic)
+        description = generate_story_based_description(script, topic)
         with open(video_path, 'rb') as v:
             bot.send_video(
                 message.chat.id,
                 v,
-                caption=f"🎬 Konu: {topic}\n\nAçıklama:\n{description}"
+                caption=f"🎬 Topic: {topic}\n\nDescription:\n{description}"
             )
     else:
         bot.reply_to(message, video_path)
