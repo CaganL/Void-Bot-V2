@@ -47,9 +47,8 @@ def generate_tts(text, output="voice.mp3"):
         return True
     except: return False
 
-# --- GEMINI ZEKASI (MODEL GÜNCELLENDİ: 2.5 Flash) ---
+# --- GEMINI ZEKASI (2.5 FLASH) ---
 def get_script_and_metadata(topic):
-    # BURAYI GÜNCELLEDİK: gemini-2.5-flash
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = (
@@ -64,17 +63,14 @@ def get_script_and_metadata(topic):
             if r.status_code == 200:
                 raw = r.json()['candidates'][0]['content']['parts'][0]['text']
                 
-                # 1. JSON Denemesi
                 try:
                     start = raw.find('{')
                     end = raw.rfind('}') + 1
                     if start != -1 and end != -1:
                         data = json.loads(raw[start:end])
                         return data.get("script", raw), data.get("mood", "cinematic"), f"#shorts {topic}"
-                except:
-                    pass
+                except: pass
                 
-                # 2. JSON Başarısızsa DÜZ METİN al
                 if len(raw.split()) > 20:
                     return raw.replace("*", "").strip(), "cinematic", f"#shorts {topic}"
                     
@@ -82,7 +78,6 @@ def get_script_and_metadata(topic):
             print(f"Deneme {attempt}: {e}")
             time.sleep(1)
             
-    # Hala olmazsa YEDEK metin
     return f"Here are some amazing facts about {topic}. Did you know this? It is truly fascinating.", "cinematic", f"#shorts {topic}"
 
 def download_music(mood, filename="bg.mp3"):
@@ -197,7 +192,9 @@ def build_final_video(topic, script, mood):
         final = CompositeVideoClip([main, subs])
         
         out = f"final_{int(time.time())}.mp4"
-        final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", threads=4)
+        # --- İŞTE ÇÖZÜM: BITRATE AYARI EKLENDİ ---
+        # bitrate="2500k" sayesinde dosya boyutu 20-30MB civarında tutulacak ve Telegram kabul edecek.
+        final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", bitrate="2500k", threads=4)
         temp.append(out)
         
         for c in clips: c.close()
@@ -231,5 +228,5 @@ def handle(m):
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (Gemini 2.5 Flash)...")
+print("Bot Başlatıldı (413 Fix)...")
 bot.polling(non_stop=True)
