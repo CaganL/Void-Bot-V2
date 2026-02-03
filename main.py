@@ -13,7 +13,7 @@ from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVid
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-BACKGROUND_MUSIC = "background.mp3"  # Trend veya ücretsiz arka plan müziği
+BACKGROUND_MUSIC = "background.mp3"  # opsiyonel
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -164,12 +164,16 @@ def build_video(script, mode="final"):
         video_clips = []
         for p in paths:
             c = VideoFileClip(p)
+            # --- Resize güvenli (even width) ---
             new_h = 1080
-            new_w = int((new_h * (c.w / c.h)) // 2) * 2
+            new_w = int(new_h * (c.w / c.h))
+            new_w = new_w if new_w % 2 == 0 else new_w + 1
             c = c.resize(height=new_h, width=new_w)
-            target_w = int((new_h * (9 / 16)) // 2) * 2
+            target_w = int(new_h * (9 / 16))
+            target_w = target_w if target_w % 2 == 0 else target_w + 1
             if c.w > target_w:
-                c = c.crop(x1=(c.w / 2 - target_w / 2), width=target_w, height=new_h)
+                x1 = int((c.w - target_w) / 2)
+                c = c.crop(x1=x1, width=target_w, height=new_h)
             video_clips.append(c)
         main_video = concatenate_videoclips(video_clips, method="compose")
         # --- Shorts uyumlu sürede kes ---
@@ -177,7 +181,7 @@ def build_video(script, mode="final"):
             main_video = main_video.subclip(0, 45)
         elif main_video.duration < 30:
             main_video = main_video.loop(duration=30)
-        # --- Arka plan müziği ekle ---
+        # --- Arka plan müziği ---
         if os.path.exists(BACKGROUND_MUSIC):
             music = AudioFileClip(BACKGROUND_MUSIC).subclip(0, main_video.duration).volumex(0.3)
             main_video = main_video.set_audio(audio.audio_fadeout(0.5).fx(afx.audio_loop, duration=main_video.duration).volumex(1.0).fx(afx.audio_mix, music))
@@ -186,12 +190,12 @@ def build_video(script, mode="final"):
         # --- Altyazı ---
         subs = create_subtitles(script, main_video.duration, main_video.size)
         final_result = CompositeVideoClip([main_video, subs])
-        # --- MODE OPTIMIZASYONU ---
+        # --- Mode optimizasyonu ---
         if mode == "test":
             fps = 24
             preset = "fast"
             bitrate = "2000k"
-        else:  # final
+        else:
             fps = 30
             preset = "medium"
             bitrate = "4000k"
@@ -205,7 +209,7 @@ def build_video(script, mode="final"):
             ffmpeg_params=["-pix_fmt", "yuv420p"],
             threads=2
         )
-        # --- Thumbnail oluştur ---
+        # --- Thumbnail ---
         frame = final_result.get_frame(1)
         Image.fromarray(frame).save("thumbnail.jpg")
         for c in video_clips:
@@ -215,37 +219,26 @@ def build_video(script, mode="final"):
     except Exception as e:
         return f"Error: {str(e)}"
 
-# --- DİNAMİK AÇIKLAMA (KONUYA GÖRE HOOK & HASHTAG) ---
+# --- DİNAMİK AÇIKLAMA ---
 def generate_story_based_description(script, topic):
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
-
-    # --- Hook seçimi ---
     if topic.lower() in ["horror", "scary", "creepy", "thriller"]:
         hook = sentences[0] if sentences else f"A terrifying {topic} story you must watch!"
+        hashtags = [f"#{topic.replace(' ', '')}", "#horror", "#scary", "#shorts", "#creepy", "#viral", "#thriller"]
     elif topic.lower() in ["motivation", "success", "inspiration", "selfhelp"]:
         hook = sentences[0] if sentences else f"Push yourself, because greatness doesn’t wait!"
+        hashtags = [f"#{topic.replace(' ', '')}", "#motivation", "#success", "#shorts", "#inspiration", "#viral"]
     else:
         hook = sentences[0] if sentences else f"Watch this amazing {topic} story!"
-
-    # --- Call-to-action ---
+        hashtags = [f"#{topic.replace(' ', '')}", "#shorts", "#viral"]
     calls_to_action = [
         "Like, comment, and subscribe for more! 🔔",
         "Don't forget to like and share! 👀",
         "Enjoyed it? Hit like and subscribe! 🎬"
     ]
-
-    # --- Hashtaglar ---
-    if topic.lower() in ["horror", "scary", "creepy", "thriller"]:
-        hashtags = [f"#{topic.replace(' ', '')}", "#horror", "#scary", "#shorts", "#creepy", "#viral", "#thriller"]
-    elif topic.lower() in ["motivation", "success", "inspiration", "selfhelp"]:
-        hashtags = [f"#{topic.replace(' ', '')}", "#motivation", "#success", "#shorts", "#inspiration", "#viral"]
-    else:
-        hashtags = [f"#{topic.replace(' ', '')}", "#shorts", "#viral"]
-
     import random
     cta = random.choice(calls_to_action)
     hashtags_text = " ".join(hashtags)
-
     return f"{hook}\n\n{cta}\n\n{hashtags_text}"
 
 # --- TELEGRAM ---
