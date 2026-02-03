@@ -43,38 +43,66 @@ def generate_tts(text, output="voice.mp3"):
 # --- 1. SENARYO MOTORU ---
 def get_script(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    prompt = (f"Write a viral and terrifying horror story about '{topic}' for a YouTube Short. "
-              "Length must be around 115-125 words. No intro or outro. Simple English only.")
+    prompt = (
+        f"Write a viral and terrifying horror story about '{topic}' for a YouTube Short. "
+        "Use short, punchy sentences. Add suspense every 2-3 sentences. "
+        "Start with a shocking hook. Length 110-125 words. No intro or outro. Simple English."
+    )
     try:
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         response = requests.post(url, json=payload, timeout=15)
         if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+            text = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+            return text
     except:
         pass
 
-    return "I looked into the mirror and saw my own reflection. But it was smiling even though I was crying. Then, it slowly reached out from the glass and grabbed my throat."
+    return "When I looked in the mirror, it was not me anymore. Something else was smiling back at me. I tried to scream, but nothing came out."
+
+# --- Hook'u başa alma ---
+def make_hook_script(script):
+    sentences = script.replace("!", ".").replace("?", ".").split(".")
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if len(sentences) < 3:
+        return script
+    hook = sentences[-1]
+    rest = ". ".join(sentences[:-1])
+    return f"{hook}. {rest}."
 
 # --- 2. VİDEO İNDİRİCİ ---
-def get_multiple_videos(query, total_duration):
+def get_multiple_videos(total_duration):
     headers = {"Authorization": PEXELS_API_KEY}
-    search_url = f"https://api.pexels.com/videos/search?query={query}&per_page=12&orientation=portrait"
+
+    queries = [
+        "dark hallway",
+        "creepy room",
+        "abandoned house",
+        "night corridor",
+        "horror atmosphere",
+        "empty hospital corridor"
+    ]
+
+    paths = []
+    current_dur = 0
+    i = 0
+
+    random.shuffle(queries)
 
     try:
-        r = requests.get(search_url, headers=headers, timeout=15)
-        videos_data = r.json().get("videos", [])
-        if not videos_data:
-            return None
-
-        paths = []
-        current_dur = 0
-
-        for i, v in enumerate(videos_data[:5]):
+        for q in queries:
             if current_dur >= total_duration:
                 break
 
+            search_url = f"https://api.pexels.com/videos/search?query={q}&per_page=8&orientation=portrait"
+            r = requests.get(search_url, headers=headers, timeout=15)
+            videos_data = r.json().get("videos", [])
+            if not videos_data:
+                continue
+
+            v = random.choice(videos_data)
             link = max(v["video_files"], key=lambda x: x["height"])["link"]
             path = f"part_{i}.mp4"
+            i += 1
 
             with open(path, "wb") as f:
                 f.write(requests.get(link, timeout=20).content)
@@ -84,23 +112,35 @@ def get_multiple_videos(query, total_duration):
             current_dur += clip.duration
             clip.close()
 
-        return paths
+        return paths if paths else None
     except:
         return None
 
 # --- 3. ALTYAZI ---
+def split_for_subtitles(text):
+    words = text.split()
+    chunks = []
+    current = []
+    for w in words:
+        current.append(w)
+        if len(current) >= 4:
+            chunks.append(" ".join(current))
+            current = []
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
+
 def create_subtitles(text, total_duration, video_size):
     W, H = video_size
     font_path = download_font()
-    fontsize = int(W / 12)
+    fontsize = int(W / 10)
 
     try:
         font = ImageFont.truetype(font_path, fontsize)
     except:
         font = ImageFont.load_default()
 
-    sentences = text.replace(".", ".|").replace("?", "?|").replace("!", "!|").split("|")
-    chunks = [s.strip() for s in sentences if s.strip()]
+    chunks = split_for_subtitles(text)
     duration_per_chunk = total_duration / len(chunks)
 
     clips = []
@@ -109,8 +149,8 @@ def create_subtitles(text, total_duration, video_size):
         img = Image.new('RGBA', (int(W), int(H)), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        wrapper = textwrap.TextWrapper(width=int(W / 22))
-        caption_wrapped = '\n'.join(wrapper.wrap(text=chunk))
+        wrapper = textwrap.TextWrapper(width=15)
+        caption_wrapped = '\n'.join(wrapper.wrap(text=chunk.upper()))
 
         bbox = draw.textbbox((0, 0), caption_wrapped, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -119,7 +159,7 @@ def create_subtitles(text, total_duration, video_size):
             ((W - tw) / 2, H * 0.7),
             caption_wrapped,
             font=font,
-            fill="#FFD700",
+            fill="#FFFFFF",
             align="center",
             stroke_width=4,
             stroke_fill="black"
@@ -130,12 +170,12 @@ def create_subtitles(text, total_duration, video_size):
     return concatenate_videoclips(clips)
 
 # --- 4. MONTAJ ---
-def build_video(topic, script):
+def build_video(script):
     try:
         generate_tts(script, "voice.mp3")
         audio = AudioFileClip("voice.mp3")
 
-        paths = get_multiple_videos(topic, audio.duration)
+        paths = get_multiple_videos(audio.duration)
         if not paths:
             return "Görüntü bulunamadı."
 
@@ -197,7 +237,9 @@ def handle_video(message):
     bot.reply_to(message, f"🎥 '{topic}' işleniyor...")
 
     script = get_script(topic)
-    video_path = build_video(topic, script)
+    script = make_hook_script(script)
+
+    video_path = build_video(script)
 
     if "final_video" in video_path:
         with open(video_path, 'rb') as v:
