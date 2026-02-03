@@ -40,20 +40,47 @@ def get_safe_font():
         except: pass
     return font_path if os.path.exists(font_path) else None
 
-def generate_tts(text, output="voice.mp3"):
+# --- GELİŞMİŞ SES MOTORU (MOOD DESTELİ) ---
+def generate_tts(text, mood, output="voice.mp3"):
     try:
-        subprocess.run(["edge-tts", "--voice", "en-US-ChristopherNeural", "--text", text, "--write-media", output], check=True)
+        # Varsayılan ayarlar
+        rate = "+0%"
+        pitch = "+0Hz"
+        
+        # Mood'a göre ses ayarı
+        if "horror" in mood.lower() or "scary" in mood.lower():
+            rate = "-10%"  # Daha yavaş (Ürpertici)
+            pitch = "-5Hz" # Biraz daha kalın
+        elif "motivation" in mood.lower() or "happy" in mood.lower() or "fun" in mood.lower():
+            rate = "+15%"  # Daha hızlı (Enerjik)
+            pitch = "+0Hz"
+
+        # Edge-TTS komutu
+        command = [
+            "edge-tts",
+            "--voice", "en-US-ChristopherNeural",
+            "--rate", rate,
+            "--pitch", pitch,
+            "--text", text,
+            "--write-media", output
+        ]
+        subprocess.run(command, check=True)
         return True
     except: return False
 
 def get_script_and_metadata(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    # --- PROMOPT GÜNCELLENDİ: KANCA (HOOK) İSTİYORUZ ---
     prompt = (
-        f"Write a YouTube Short script about '{topic}'.\n"
-        "1. Length: 100-120 words. Start with a hook.\n"
-        "2. VISUALS: Provide 3-4 english search terms for stock videos.\n"
-        "3. Output JSON: {{ \"script\": \"...\", \"mood\": \"horror/motivation\", \"keywords\": [\"term1\", \"term2\"], \"description\": \"...\" }}"
+        f"Act as a viral content creator. Write a script about '{topic}'.\n"
+        "1. CRITICAL: Start with a SHOCKING HOOK (e.g., 'You won't believe this...', 'Stop doing this...').\n"
+        "2. Length: 100-130 words.\n"
+        "3. Tone: Engaging, storytelling style.\n"
+        "4. VISUALS: Provide 3-4 english search terms for stock videos.\n"
+        "5. Output JSON: {{ \"script\": \"...\", \"mood\": \"horror/motivation/happy\", \"keywords\": [\"term1\", \"term2\"], \"description\": \"...\" }}"
     )
+    
     for attempt in range(3):
         try:
             r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
@@ -65,38 +92,27 @@ def get_script_and_metadata(topic):
                     data = json.loads(raw[start:end])
                     return data.get("script", raw), data.get("mood", "cinematic"), data.get("keywords", [topic]), f"#shorts {topic}"
         except: time.sleep(1)
-    return f"Amazing facts about {topic}.", "cinematic", [topic], f"#shorts {topic}"
+    return f"Did you know about {topic}? It is mind-blowing!", "cinematic", [topic], f"#shorts {topic}"
 
-# --- MÜZİK İNDİRİCİ (GÜVENLİK KONTROLLÜ) ---
 def download_music(mood, filename="bg.mp3"):
     library = {
         "horror": "https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3",
         "motivation": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
         "cinematic": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"
     }
-    
-    # Eski bozuk dosyayı sil
-    if os.path.exists(filename):
-        os.remove(filename)
-
+    if os.path.exists(filename): os.remove(filename)
     try:
         url = library.get("cinematic")
         for k in library: 
             if k in mood.lower(): url = library[k]
-            
         r = requests.get(url, timeout=15)
         if r.status_code == 200:
             with open(filename, "wb") as f: f.write(r.content)
-            
-            # --- YENİ KONTROL: Dosya Boyutu ---
-            # Eğer inen dosya 50KB'dan küçükse müzik değil hatadır. Sil gitsin.
             if os.path.getsize(filename) < 50000:
-                print("Müzik dosyası bozuk indi, siliniyor.")
                 os.remove(filename)
                 return False
             return True
-    except:
-        return False
+    except: return False
     return False
 
 def get_stock_videos(keywords, duration):
@@ -127,41 +143,57 @@ def get_stock_videos(keywords, duration):
     if not paths: raise Exception("Görsel video bulunamadı.")
     return paths
 
+# --- ALTYAZI GÜNCELLEMESİ (BÜYÜK & NET) ---
 def create_subs(text, duration, size):
     W, H = size
     font_path = get_safe_font()
     try:
-        font = ImageFont.truetype(font_path, int(W/12)) if font_path else ImageFont.load_default()
+        # Font boyutunu büyüttük (W/12 -> W/9)
+        font = ImageFont.truetype(font_path, int(W/9)) if font_path else ImageFont.load_default()
     except: font = ImageFont.load_default()
+    
     words = text.split()
     chunks = []
     curr = []
+    # Ekranda daha az kelime, daha büyük yazı
     for w in words:
         curr.append(w)
-        if len(curr) >= 2:
+        if len(curr) >= 2: 
             chunks.append(" ".join(curr))
             curr = []
     if curr: chunks.append(" ".join(curr))
+    
     clips = []
     dur_per = duration / len(chunks)
+    
     for chunk in chunks:
         img = Image.new('RGBA', (int(W), int(H)), (0,0,0,0))
         draw = ImageDraw.Draw(img)
-        lines = textwrap.wrap(chunk.upper(), width=20)
-        y = H * 0.65
+        
+        # Text Wrap genişliğini azalttık ki taşmasın
+        lines = textwrap.wrap(chunk.upper(), width=15)
+        y = H * 0.60
+        
         for line in lines:
             bbox = draw.textbbox((0,0), line, font=font)
             w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-            draw.rectangle([(W-w)/2 - 15, y - 15, (W+w)/2 + 15, y + h + 15], fill=(0,0,0,170))
-            draw.text(((W-w)/2, y), line, font=font, fill="#FFD700", stroke_width=2, stroke_fill="black")
-            y += h + 25
+            
+            # Arka plan daha koyu (Opacity 230) ve daha geniş
+            pad = 20
+            draw.rectangle([(W-w)/2 - pad, y - pad, (W+w)/2 + pad, y + h + pad], fill=(0,0,0,230))
+            
+            # Yazı
+            draw.text(((W-w)/2, y), line, font=font, fill="#FFD700", stroke_width=3, stroke_fill="black")
+            y += h + 30
+            
         clips.append(ImageClip(np.array(img)).set_duration(dur_per))
     return concatenate_videoclips(clips)
 
 def build_final_video(topic, script, mood, keywords):
     temp = []
     try:
-        generate_tts(script, "voice.mp3")
+        # Seslendirmeye Mood bilgisini de gönderiyoruz
+        generate_tts(script, mood, "voice.mp3")
         temp.append("voice.mp3")
         audio = AudioFileClip("voice.mp3")
         
@@ -174,7 +206,6 @@ def build_final_video(topic, script, mood, keywords):
         clips = []
         for p in v_paths:
             c = VideoFileClip(p)
-            # Boyut Sabitleme (608x1080)
             c = c.resize(height=1080)
             if c.w % 2 != 0: c = c.resize(width=c.w + 1)
             
@@ -184,7 +215,6 @@ def build_final_video(topic, script, mood, keywords):
             else:
                 c = c.resize(width=TARGET_W, height=TARGET_H)
             
-            # Son Güvenlik Resize'ı
             c = c.resize(newsize=(TARGET_W, TARGET_H))
             clips.append(c)
             
@@ -192,17 +222,14 @@ def build_final_video(topic, script, mood, keywords):
         if main.duration > audio.duration: main = main.subclip(0, audio.duration)
         else: main = main.loop(duration=audio.duration)
         
-        # --- SES BİRLEŞTİRME (TRY-EXCEPT İÇİNDE) ---
         if has_music:
             try:
-                # Dosya var ama MoviePy okuyamazsa patlamasın diye burada da koruma var
                 bg = AudioFileClip("bg.mp3").volumex(0.15)
                 if bg.duration < main.duration: bg = afx.audio_loop(bg, duration=main.duration)
                 else: bg = bg.subclip(0, main.duration)
                 final_audio = CompositeAudioClip([audio, bg])
                 main = main.set_audio(final_audio)
-            except Exception as e:
-                print(f"Müzik yüklenemedi (MoviePy hatası): {e}")
+            except:
                 main = main.set_audio(audio)
         else:
             main = main.set_audio(audio)
@@ -211,7 +238,6 @@ def build_final_video(topic, script, mood, keywords):
         final = CompositeVideoClip([main, subs])
         
         out = f"final_{int(time.time())}.mp4"
-        # Kalite Ayarları (4500k bitrate, yuv420p format)
         final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24, preset="medium", bitrate="4500k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
         temp.append(out)
         
@@ -228,12 +254,12 @@ def handle(m):
             bot.reply_to(m, "Konu girin: /video [Konu]")
             return
         topic = m.text.split(maxsplit=1)[1]
-        msg = bot.reply_to(m, f"🎬 '{topic}' analiz ediliyor...")
+        msg = bot.reply_to(m, f"🎬 '{topic}' için viral içerik hazırlanıyor...")
         
         script, mood, keywords, desc = get_script_and_metadata(topic)
         
         keywords_str = ", ".join(keywords) if isinstance(keywords, list) else keywords
-        bot.edit_message_text(f"🎥 Görseller aranıyor: {keywords_str}\nMood: {mood}", m.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎥 Senaryo: {script[:50]}...\nMood: {mood}\nGörseller: {keywords_str}", m.chat.id, msg.message_id)
         
         path, files = build_final_video(topic, script, mood, keywords)
         
@@ -246,5 +272,5 @@ def handle(m):
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (No-Crash Music)...")
+print("Bot Başlatıldı (V10 - Viral Mode)...")
 bot.polling(non_stop=True)
