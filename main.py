@@ -18,7 +18,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-W, H = 720, 1280  # Shorts için stabil ve çift çözünürlük
+# YouTube Shorts için NET ve ÇİFT çözünürlük
+W, H = 1080, 1920
+FPS = 30
 
 # --- FONT ---
 def get_font():
@@ -31,7 +33,7 @@ def get_font():
                 f.write(r.content)
     return font_path
 
-# --- TTS (STABİL) ---
+# --- TTS ---
 def generate_tts(text, out="voice.mp3"):
     tts = gTTS(text=text, lang="en")
     tts.save(out)
@@ -44,9 +46,12 @@ def get_script(topic):
         "110 to 130 words. Short sentences. Strong hook at the start. Simple English."
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    r = requests.post(url, json=payload, timeout=20)
-    if r.status_code == 200:
-        return r.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+    try:
+        r = requests.post(url, json=payload, timeout=20)
+        if r.status_code == 200:
+            return r.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+    except:
+        pass
 
     return "I looked at my phone. It showed my face. But I was not holding it."
 
@@ -79,17 +84,20 @@ def get_videos(total_duration):
             with open(path, "wb") as f:
                 f.write(requests.get(link, timeout=20).content)
 
-            clip = VideoFileClip(path)
-            paths.append(path)
-            current += clip.duration
-            clip.close()
+            try:
+                clip = VideoFileClip(path)
+                current += clip.duration
+                clip.close()
+                paths.append(path)
+            except:
+                continue
 
     return paths
 
 # --- ALTYAZI ---
 def make_subtitles(text, duration):
     font_path = get_font()
-    font = ImageFont.truetype(font_path, 60)
+    font = ImageFont.truetype(font_path, 70)
 
     words = text.split()
     chunks = []
@@ -102,7 +110,7 @@ def make_subtitles(text, duration):
     if temp:
         chunks.append(" ".join(temp))
 
-    per = duration / len(chunks)
+    per = duration / max(1, len(chunks))
     clips = []
 
     for ch in chunks:
@@ -117,12 +125,35 @@ def make_subtitles(text, duration):
         x = (W - tw) // 2
         y = int(H * 0.72)
 
-        draw.rectangle([x-20, y-10, x+tw+20, y+th+10], fill=(0,0,0,180))
+        draw.rectangle([x-30, y-20, x+tw+30, y+th+20], fill=(0,0,0,180))
         draw.text((x, y), wrapped, font=font, fill="white")
 
         clips.append(ImageClip(np.array(img)).set_duration(per))
 
-    return concatenate_videoclips(clips)
+    return concatenate_videoclips(clips, method="compose")
+
+# --- CLIP DÜZELT ---
+def prepare_clip(path):
+    try:
+        c = VideoFileClip(path)
+
+        # Oranı bozmadan büyüt
+        c = c.resize(height=H, resample="lanczos")
+
+        if c.w < W:
+            c = c.resize(width=W, resample="lanczos")
+
+        # Ortadan kırp
+        c = c.crop(x_center=c.w/2, y_center=c.h/2, width=W, height=H)
+
+        # Güvenlik: ölçüleri çift yap
+        new_w = int(c.w) // 2 * 2
+        new_h = int(c.h) // 2 * 2
+        c = c.resize((new_w, new_h))
+
+        return c
+    except:
+        return None
 
 # --- MONTAJ ---
 def build_video(script):
@@ -131,16 +162,16 @@ def build_video(script):
 
     paths = get_videos(audio.duration)
     if not paths:
-        return "Video bulunamadı"
+        return None
 
     clips = []
     for p in paths:
-        c = VideoFileClip(p)
-        c = c.resize(height=H)
-        if c.w < W:
-            c = c.resize(width=W)
-        c = c.crop(x_center=c.w/2, y_center=c.h/2, width=W, height=H)
-        clips.append(c)
+        c = prepare_clip(p)
+        if c:
+            clips.append(c)
+
+    if not clips:
+        return None
 
     main = concatenate_videoclips(clips, method="compose")
 
@@ -152,10 +183,24 @@ def build_video(script):
     main = main.set_audio(audio)
 
     subs = make_subtitles(script, main.duration)
-    final = CompositeVideoClip([main, subs])
+    final = CompositeVideoClip([main, subs], size=(W, H))
 
     out = "final_video.mp4"
-    final.write_videofile(out, codec="libx264", audio_codec="aac", fps=24)
+    final.write_videofile(
+        out,
+        codec="libx264",
+        audio_codec="aac",
+        fps=FPS,
+        threads=2,
+        preset="medium"
+    )
+
+    # Temizlik
+    for c in clips:
+        c.close()
+    audio.close()
+    main.close()
+    final.close()
 
     return out
 
@@ -173,7 +218,7 @@ def handle_video(message):
     script = get_script(topic)
     path = build_video(script)
 
-    if os.path.exists(path):
+    if path and os.path.exists(path):
         with open(path, "rb") as v:
             bot.send_video(message.chat.id, v, caption=f"🎥 Konu: {topic}")
     else:
