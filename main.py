@@ -49,14 +49,18 @@ async def generate_tts(text, out="voice.mp3", voice="en-US-GuyNeural"):
     except Exception as e:
         print(f"TTS Hatası: {e}")
 
-# --- İÇERİK ÜRETİCİ (Çoklu Model Desteği) ---
+# --- İÇERİK ÜRETİCİ (Senin Listenle Güncellendi) ---
 def get_content(topic):
-    # Denenecek Modeller Listesi (Biri çalışmazsa diğerine geçer)
+    # Senin sağladığın listedeki en uygun modeller:
+    # 1. Flash 2.0 (Dengeli)
+    # 2. Flash Lite (Hızlı ve az kota yer - Hata alırsan buna geçer)
+    # 3. Flash 2.5 (Yeni ve güçlü)
+    # 4. Exp 1206 (Deneysel ama zeki)
     models_to_try = [
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash-001",
-        "gemini-pro"
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-exp-1206"
     ]
 
     prompt = (
@@ -72,6 +76,7 @@ def get_content(topic):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
     for model in models_to_try:
+        # 'models/' ön ekini API URL'sine düzgün yerleştirmek için:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
         print(f"🔄 Model deneniyor: {model}...")
 
@@ -79,7 +84,7 @@ def get_content(topic):
             r = requests.post(url, json=payload, timeout=30)
             
             if r.status_code == 200:
-                print(f"✅ Başarılı: {model}")
+                print(f"✅ Başarılı Model: {model}")
                 data = r.json()
                 raw_text = data['candidates'][0]['content']['parts'][0]['text']
                 raw_text = raw_text.replace("```json", "").replace("```", "").strip()
@@ -87,23 +92,24 @@ def get_content(topic):
                 return result
             
             elif r.status_code == 429:
-                print(f"⚠️ Kota Dolu ({model}). Diğer modele geçiliyor...")
+                print(f"⚠️ Kota Dolu ({model}). Daha hafif bir modele geçiliyor...")
                 time.sleep(2)
-                continue # Diğer modele geç
+                continue # Sıradaki modele geç
             
             elif r.status_code == 404:
-                print(f"❌ Model Bulunamadı ({model}). Diğer modele geçiliyor...")
+                print(f"❌ Model Bulunamadı ({model}). İsmi yanlış olabilir, diğerine geçiliyor...")
                 continue
             
             else:
-                print(f"⚠️ Hata: {r.status_code} - {r.text}")
+                print(f"⚠️ API Hatası: {r.status_code} - {r.text}")
+                time.sleep(1)
                 
         except Exception as e:
             print(f"Bağlantı Hatası ({model}): {e}")
             time.sleep(1)
 
     # Fallback (Hiçbir model çalışmazsa)
-    print("❌ Tüm modeller başarısız oldu, yedek hikaye kullanılıyor.")
+    print("❌ Tüm modeller başarısız oldu, yedek hikaye devreye giriyor.")
     return {
         "script": "I looked at my phone screen in the dark room. It showed my face, illuminated by the blue light. But wait. In the reflection of my glasses, I saw something standing behind me. I froze. I didn't want to turn around. Slowly, I tilted the phone to see the corner of the room. It was empty. I sighed with relief and put the phone down. Then, a cold whisper touched my ear: You should have looked up.",
         "title": "Don't Look Up 😱",
@@ -289,7 +295,7 @@ def handle_video(message):
         return
 
     topic = args[1]
-    bot.reply_to(message, "🎬 Video hazırlanıyor, lütfen bekle (1-2 dk)...")
+    bot.reply_to(message, "🎬 Video hazırlanıyor (1-2 dk sürebilir)...")
 
     content = get_content(topic)
     
