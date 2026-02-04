@@ -2,14 +2,15 @@ import os
 import telebot
 import requests
 import random
-import subprocess
+import asyncio
+import edge_tts
 import numpy as np
 import textwrap
 import time
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip,
-    concatenate_videoclips, afx, CompositeAudioClip
+    concatenate_videoclips, CompositeAudioClip
 )
 
 # --- AYARLAR ---
@@ -22,6 +23,7 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = getattr(Image, 'Resampling', Image).LANCZOS
 
+# --- DOSYA TEMİZLEME ---
 def cleanup_files(file_list):
     for f in file_list:
         if os.path.exists(f):
@@ -30,6 +32,7 @@ def cleanup_files(file_list):
             except:
                 pass
 
+# --- FONT ---
 def get_safe_font():
     font_path = "Oswald-Bold.ttf"
     if not os.path.exists(font_path) or os.path.getsize(font_path) < 1000:
@@ -45,24 +48,25 @@ def get_safe_font():
             pass
     return font_path if os.path.exists(font_path) else None
 
-# --- TTS (RAILWAY UYUMLU) ---
+# --- TTS (PYTHON İÇİNDEN, CLI YOK) ---
 def generate_tts(text, output="voice.mp3"):
     try:
-        cmd = [
-            "python", "-m", "edge_tts",
-            "--voice", "en-GB-RyanNeural",
-            "--rate", "-10%",
-            "--pitch", "-2Hz",
-            "--write-media", output,
-            text
-        ]
-        subprocess.run(cmd, check=True)
+        async def _gen():
+            communicate = edge_tts.Communicate(
+                text=text,
+                voice="en-GB-RyanNeural",
+                rate="-10%",
+                pitch="-2Hz"
+            )
+            await communicate.save(output)
+
+        asyncio.run(_gen())
         return True
     except Exception as e:
         print("TTS Hatası:", e)
         return False
 
-# --- SENARYO ---
+# --- GEMINI SENARYO ---
 def get_script(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = (
@@ -80,7 +84,7 @@ def get_script(topic):
 
     return "When I looked in the mirror, it was not me anymore. Something else was smiling back at me. I tried to scream, but nothing came out."
 
-# --- Hook'u başa alma ---
+# --- HOOK'U BAŞA AL ---
 def make_hook_script(script):
     sentences = script.replace("!", ".").replace("?", ".").split(".")
     sentences = [s.strip() for s in sentences if s.strip()]
@@ -90,7 +94,7 @@ def make_hook_script(script):
     rest = ". ".join(sentences[:-1])
     return f"{hook}. {rest}."
 
-# --- PEXELS VIDEO ---
+# --- PEXELS VİDEO ÇEKME ---
 def get_multiple_videos(total_duration):
     headers = {"Authorization": PEXELS_API_KEY}
     queries = [
@@ -108,33 +112,30 @@ def get_multiple_videos(total_duration):
 
     random.shuffle(queries)
 
-    try:
-        for q in queries:
-            if current_dur >= total_duration:
-                break
+    for q in queries:
+        if current_dur >= total_duration:
+            break
 
-            search_url = f"https://api.pexels.com/videos/search?query={q}&per_page=8&orientation=portrait"
-            r = requests.get(search_url, headers=headers, timeout=15)
-            videos_data = r.json().get("videos", [])
-            if not videos_data:
-                continue
+        search_url = f"https://api.pexels.com/videos/search?query={q}&per_page=8&orientation=portrait"
+        r = requests.get(search_url, headers=headers, timeout=15)
+        videos_data = r.json().get("videos", [])
+        if not videos_data:
+            continue
 
-            v = random.choice(videos_data)
-            link = max(v["video_files"], key=lambda x: x["height"])["link"]
-            path = f"part_{i}.mp4"
-            i += 1
+        v = random.choice(videos_data)
+        link = max(v["video_files"], key=lambda x: x["height"])["link"]
+        path = f"part_{i}.mp4"
+        i += 1
 
-            with open(path, "wb") as f:
-                f.write(requests.get(link, timeout=20).content)
+        with open(path, "wb") as f:
+            f.write(requests.get(link, timeout=20).content)
 
-            clip = VideoFileClip(path)
-            paths.append(path)
-            current_dur += clip.duration
-            clip.close()
+        clip = VideoFileClip(path)
+        paths.append(path)
+        current_dur += clip.duration
+        clip.close()
 
-        return paths if paths else None
-    except:
-        return None
+    return paths if paths else None
 
 # --- ALTYAZI ---
 def split_for_subtitles(text):
@@ -189,18 +190,22 @@ def create_subtitles(text, total_duration, video_size):
 
     return concatenate_videoclips(clips)
 
-# --- MONTAJ ---
+# --- VİDEO OLUŞTURMA ---
 def build_video(script):
+    temp_files = []
     try:
         ok = generate_tts(script, "voice.mp3")
         if not ok:
             return "TTS üretilemedi."
+        temp_files.append("voice.mp3")
 
         audio = AudioFileClip("voice.mp3")
 
         paths = get_multiple_videos(audio.duration)
         if not paths:
             return "Görüntü bulunamadı."
+
+        temp_files.extend(paths)
 
         video_clips = []
         for p in paths:
@@ -238,24 +243,25 @@ def build_video(script):
             threads=4
         )
 
+        audio.close()
         for c in video_clips:
             c.close()
-        audio.close()
 
+        temp_files.append(out)
         return out
     except Exception as e:
         return f"Hata: {str(e)}"
 
-# --- TELEGRAM ---
+# --- TELEGRAM KOMUT ---
 @bot.message_handler(commands=['video'])
 def handle_video(message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        bot.reply_to(message, "Lütfen bir konu yaz.")
+        bot.reply_to(message, "Lütfen bir konu yaz. Örnek: /video ghost")
         return
 
     topic = args[1]
-    bot.reply_to(message, f"🎥 '{topic}' işleniyor...")
+    bot.reply_to(message, f"🎥 '{topic}' hazırlanıyor...")
 
     script = get_script(topic)
     script = make_hook_script(script)
