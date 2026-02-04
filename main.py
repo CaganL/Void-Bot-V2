@@ -32,9 +32,9 @@ def get_font():
             pass
     return font_path
 
-# --- TTS (Edge-TTS + Yedek gTTS) ---
+# --- TTS ---
 def generate_tts(text, output="voice.mp3"):
-    # 1) Edge-TTS dene
+    # Edge-TTS dene
     try:
         cmd = [
             "edge-tts",
@@ -43,11 +43,12 @@ def generate_tts(text, output="voice.mp3"):
             "--write-media", output
         ]
         subprocess.run(cmd, check=True)
-        return True
+        if os.path.exists(output) and os.path.getsize(output) > 1000:
+            return True
     except:
         pass
 
-    # 2) Yedek: gTTS
+    # Yedek: gTTS
     try:
         from gtts import gTTS
         tts = gTTS(text=text, lang="en")
@@ -61,7 +62,7 @@ def get_script(topic):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = (
         f"Write a viral and scary story about '{topic}' for YouTube Shorts. "
-        "Start with a strong hook. Simple English. 130-150 words. No intro or outro."
+        "Start with a strong hook. Simple English. 140-160 words. No intro or outro."
     )
     try:
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -74,7 +75,7 @@ def get_script(topic):
     return "I thought I was alone in the house. Then I heard my own voice calling my name from the dark hallway."
 
 # --- VIDEO BUL ---
-def get_videos(total_duration):
+def get_videos(target_duration):
     headers = {"Authorization": PEXELS_API_KEY}
     queries = [
         "dark hallway", "creepy room", "abandoned house",
@@ -82,13 +83,13 @@ def get_videos(total_duration):
     ]
 
     paths = []
-    current = 0
+    total = 0
     i = 0
 
     random.shuffle(queries)
 
     for q in queries:
-        if current >= total_duration + 5:
+        if total >= target_duration + 5:
             break
         try:
             r = requests.get(
@@ -107,10 +108,20 @@ def get_videos(total_duration):
             with open(path, "wb") as f:
                 f.write(requests.get(link, timeout=20).content)
 
-            clip = VideoFileClip(path)
-            paths.append(path)
-            current += clip.duration
-            clip.close()
+            try:
+                clip = VideoFileClip(path)
+                if clip.duration < 1:
+                    clip.close()
+                    os.remove(path)
+                    continue
+                paths.append(path)
+                total += clip.duration
+                clip.close()
+            except:
+                if os.path.exists(path):
+                    os.remove(path)
+                continue
+
         except:
             pass
 
@@ -121,7 +132,7 @@ def make_subtitles(text, duration, size):
     W, H = size
     font_path = get_font()
     try:
-        font = ImageFont.truetype(font_path, int(W / 10))
+        font = ImageFont.truetype(font_path, int(W / 12))
     except:
         font = ImageFont.load_default()
 
@@ -148,7 +159,7 @@ def make_subtitles(text, duration, size):
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
         x = (W - tw) // 2
-        y = int(H * 0.75)
+        y = int(H * 0.78)
 
         d.rectangle([x-20, y-10, x+tw+20, y+th+10], fill=(0,0,0,180))
         d.text((x, y), txt, font=font, fill="white")
@@ -164,30 +175,36 @@ def build_video(script):
 
     audio = AudioFileClip("voice.mp3")
 
-    paths = get_videos(audio.duration)
+    paths = get_videos(max(40, audio.duration))
     if not paths:
         return "Görüntü bulunamadı."
 
     clips = []
 
     for p in paths:
-        c = VideoFileClip(p).resize(height=1920)
+        try:
+            c = VideoFileClip(p).resize(height=1920)
 
-        target_w = int(1920 * 9 / 16)
-        if target_w % 2 != 0:
-            target_w += 1
+            target_w = int(1920 * 9 / 16)
+            if target_w % 2 != 0:
+                target_w += 1
 
-        if c.w > target_w:
-            x1 = int((c.w - target_w) / 2)
-            c = c.crop(x1=x1, width=target_w, height=1920)
+            if c.w > target_w:
+                x1 = int((c.w - target_w) / 2)
+                c = c.crop(x1=x1, width=target_w, height=1920)
 
-        # Son kontrol: çift sayı
-        if c.w % 2 != 0:
-            c = c.resize(width=c.w + 1)
-        if c.h % 2 != 0:
-            c = c.resize(height=c.h + 1)
+            # Çift sayı garantisi
+            if c.w % 2 != 0:
+                c = c.resize(width=c.w + 1)
+            if c.h % 2 != 0:
+                c = c.resize(height=c.h + 1)
 
-        clips.append(c)
+            clips.append(c)
+        except:
+            continue
+
+    if not clips:
+        return "Video klipler işlenemedi."
 
     main = concatenate_videoclips(clips, method="compose")
 
@@ -228,11 +245,11 @@ def handle_video(message):
     script = get_script(topic)
     video_path = build_video(script)
 
-    if os.path.exists(video_path):
+    if isinstance(video_path, str) and os.path.exists(video_path):
         with open(video_path, "rb") as v:
             bot.send_video(message.chat.id, v, caption=f"🎥 Konu: {topic}")
     else:
-        bot.reply_to(message, video_path)
+        bot.reply_to(message, str(video_path))
 
 print("Bot çalışıyor...")
 bot.polling(non_stop=True)
