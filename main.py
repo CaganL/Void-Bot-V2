@@ -9,7 +9,7 @@ import time
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip,
-    concatenate_videoclips
+    concatenate_videoclips, afx, CompositeAudioClip
 )
 
 # --- AYARLAR ---
@@ -21,6 +21,14 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = getattr(Image, 'Resampling', Image).LANCZOS
+
+def cleanup_files(file_list):
+    for f in file_list:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except:
+                pass
 
 def get_safe_font():
     font_path = "Oswald-Bold.ttf"
@@ -41,12 +49,12 @@ def get_safe_font():
 def generate_tts(text, output="voice.mp3"):
     try:
         cmd = [
-            "edge-tts",
-            "--voice=en-GB-RyanNeural",
-            "--rate=-10%",
-            "--pitch=-2Hz",
+            "python", "-m", "edge_tts",
+            "--voice", "en-GB-RyanNeural",
+            "--rate", "-10%",
+            "--pitch", "-2Hz",
             "--write-media", output,
-            text  # ⬅️ METİN EN SONA ARGÜMAN OLARAK GİDİYOR
+            text
         ]
         subprocess.run(cmd, check=True)
         return True
@@ -72,6 +80,7 @@ def get_script(topic):
 
     return "When I looked in the mirror, it was not me anymore. Something else was smiling back at me. I tried to scream, but nothing came out."
 
+# --- Hook'u başa alma ---
 def make_hook_script(script):
     sentences = script.replace("!", ".").replace("?", ".").split(".")
     sentences = [s.strip() for s in sentences if s.strip()]
@@ -96,6 +105,7 @@ def get_multiple_videos(total_duration):
     paths = []
     current_dur = 0
     i = 0
+
     random.shuffle(queries)
 
     try:
@@ -103,7 +113,7 @@ def get_multiple_videos(total_duration):
             if current_dur >= total_duration:
                 break
 
-            search_url = f"https://api.pexels.com/videos/search?query={q}&per_page=6&orientation=portrait"
+            search_url = f"https://api.pexels.com/videos/search?query={q}&per_page=8&orientation=portrait"
             r = requests.get(search_url, headers=headers, timeout=15)
             videos_data = r.json().get("videos", [])
             if not videos_data:
