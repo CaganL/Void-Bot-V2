@@ -97,12 +97,10 @@ async def generate_resources(script):
                 if not files: continue
                 
                 # KALİTE AYARI:
-                # 4K indirmeye gerek yok (çok büyük olur), ama en iyi HD (1080p veya 720p) olanı al.
-                # width değeri 720'den büyük olanları filtrele
+                # En az 720p genişliği olanları al, en kalitelisini seç.
                 suitable = [f for f in files if f["width"] >= 720]
                 if not suitable: suitable = files
                 
-                # En yüksek çözünürlüklü olanı seç
                 link = sorted(suitable, key=lambda x: x["height"], reverse=True)[0]["link"]
                 
                 path = f"clip_{len(paths)}.mp4"
@@ -135,7 +133,7 @@ def smart_resize(clip):
         
     return clip
 
-# --- MONTAJ VE YÜKSEK KALİTE ÇIKTI ---
+# --- MONTAJ VE ALTIN ORAN ÇIKTI ---
 def build_video(content):
     try:
         paths, audio = asyncio.run(generate_resources(content["script"]))
@@ -159,16 +157,16 @@ def build_video(content):
         
         out = "final.mp4"
         
-        # --- YÜKSEK KALİTE AYARLARI ---
-        # 40 saniyelik video için 5500k bitrate yaklaşık 28-30 MB tutar.
-        # Bu hem çok net görünür hem de Telegram 50MB sınırına takılmaz.
+        # --- ALTIN ORAN AYARLARI ---
+        # Preset: ultrafast (Donmayı engeller, işlemciyi rahatlatır)
+        # Bitrate: 3500k (HD Kalite ama Telegram sınırını aşmaz)
         final_clip.write_videofile(
             out, 
-            fps=24, # Sinematik
+            fps=24, 
             codec="libx264", 
-            preset="fast", # Ultrafast'ten daha kaliteli sıkıştırma yapar
-            bitrate="5500k", # YÜKSEK KALİTE (HD)
-            audio_bitrate="192k", # YÜKSEK SES KALİTESİ
+            preset="ultrafast",  # <-- HIZ İÇİN BUNU DEĞİŞTİRDİK
+            bitrate="3500k",     # <-- GÜVENLİ VE KALİTELİ ARALIK
+            audio_bitrate="192k",
             threads=4, 
             logger=None
         )
@@ -188,7 +186,7 @@ def build_video(content):
 @bot.message_handler(commands=["video"])
 def handle_video(message):
     try:
-        bot.reply_to(message, "🎬 Video hazırlanıyor... (HD Kalite, ~40 saniye)")
+        bot.reply_to(message, "🎬 Video hazırlanıyor... (HD Kalite, Hızlı Mod)")
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
