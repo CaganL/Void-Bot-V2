@@ -47,9 +47,11 @@ def get_font():
 
 # --- AI HİKAYE ---
 def get_content(topic):
+    # Promptu kısalttık ki video 60 saniyeyi aşıp devasa boyutlara ulaşmasın
     models = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     prompt = (
         f"Create a viral scary story about '{topic}'. "
+        "Keep it under 150 words (max 50 seconds video). "
         "Output ONLY JSON: {'script': 'story text', 'title': 'title', 'hashtags': '#tags'}"
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -64,7 +66,7 @@ def get_content(topic):
         except: continue
 
     return {
-        "script": "I heard a knock on the mirror. It came from inside.",
+        "script": "I looked at the mirror. My reflection blinked. I didn't. Then it smiled.",
         "title": "The Mirror 😱",
         "hashtags": "#horror"
     }
@@ -78,7 +80,7 @@ async def generate_resources(script):
     
     # Video Arama
     headers = {"Authorization": PEXELS_API_KEY}
-    queries = ["horror", "scary", "dark", "creepy", "nightmare"]
+    queries = ["horror", "scary", "dark", "creepy", "nightmare", "suspense"]
     random.shuffle(queries)
     paths = []
     current_dur = 0
@@ -92,14 +94,16 @@ async def generate_resources(script):
                 if current_dur >= audio.duration: break
                 files = v.get("video_files", [])
                 if not files: continue
-                # En yüksek kaliteyi değil, HD olanı seç (Hız ve boyut için)
-                best = sorted(files, key=lambda x: x["height"], reverse=True)[0]["link"]
+                # HD kaliteyi seç (4K seçersek dosya çok büyür, o yüzden width 1080 civarı olanı alıyoruz)
+                # Dosya boyutunu küçültmek için en büyük değil, en uygun olanı alıyoruz
+                suitable = [f for f in files if f["width"] >= 720]
+                if not suitable: suitable = files
+                link = sorted(suitable, key=lambda x: x["height"], reverse=True)[0]["link"]
                 
                 path = f"clip_{len(paths)}.mp4"
                 with open(path, "wb") as f:
-                    f.write(requests.get(best, timeout=15).content)
+                    f.write(requests.get(link, timeout=15).content)
                 
-                # İnen dosya sağlam mı kontrol et
                 try:
                     c = VideoFileClip(path)
                     if c.duration > 1:
@@ -112,24 +116,21 @@ async def generate_resources(script):
         
     return paths, audio
 
-# --- AKILLI KIRPMA FONKSİYONU (YENİ) ---
-# Videoyu çubuk gibi yapmadan ekrana tam oturtur
+# --- AKILLI KIRPMA (Smart Crop) ---
 def smart_resize(clip):
     target_ratio = W / H
     clip_ratio = clip.w / clip.h
     
     if clip_ratio > target_ratio:
-        # Video genişse: Yüksekliğe göre ayarla, kenarları kırp
         clip = clip.resize(height=H)
         clip = clip.crop(x1=clip.w/2 - W/2, width=W, height=H)
     else:
-        # Video inceyse: Genişliğe göre ayarla, altı/üstü kırp (ÇUBUK SORUNU ÇÖZÜMÜ)
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
         
     return clip
 
-# --- MONTAJ ---
+# --- MONTAJ VE SIKIŞTIRMA ---
 def build_video(content):
     try:
         paths, audio = asyncio.run(generate_resources(content["script"]))
@@ -139,7 +140,6 @@ def build_video(content):
         for p in paths:
             try:
                 c = VideoFileClip(p).without_audio()
-                # Yeni akıllı boyutlandırmayı kullan
                 c = smart_resize(c)
                 clips.append(c)
             except: continue
@@ -149,12 +149,23 @@ def build_video(content):
         final_clip = concatenate_videoclips(clips, method="compose")
         final_clip = final_clip.set_audio(audio)
         
-        # Süreyi eşitle
         if final_clip.duration > audio.duration:
             final_clip = final_clip.subclip(0, audio.duration)
         
         out = "final.mp4"
-        final_clip.write_videofile(out, fps=24, preset="ultrafast", threads=4, logger=None)
+        
+        # --- KRİTİK SIKIŞTIRMA AYARLARI ---
+        # Bitrate 2500k = Yaklaşık 1 dakikalık video 20-30 MB olur (Telegram limiti 50MB)
+        final_clip.write_videofile(
+            out, 
+            fps=24, 
+            codec="libx264", 
+            preset="faster", 
+            bitrate="2500k", 
+            audio_bitrate="128k",
+            threads=4, 
+            logger=None
+        )
         
         # Temizlik
         audio.close()
@@ -171,7 +182,7 @@ def build_video(content):
 @bot.message_handler(commands=["video"])
 def handle_video(message):
     try:
-        bot.reply_to(message, "🎬 Video hazırlanıyor... (Görüntü tam ekran yapılıyor)")
+        bot.reply_to(message, "🎬 Video hazırlanıyor... (Sıkıştırma uygulanıyor, lütfen bekle)")
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
