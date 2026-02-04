@@ -46,12 +46,15 @@ def generate_tts(text, output="voice.mp3"):
         return True
     except: return False
 
-# --- V29 SENARYO MOTORU (SENİN LİSTENE ÖZEL) ---
+# --- V30 AKILLI SENARYO MOTORU (KOTA DOSTU) ---
 def get_script_and_metadata(topic):
-    # SENİN LİSTENDE OLAN MODELLER (Sırasıyla denenir)
-    # 1. Öncelik: gemini-2.0-flash (Listende var, hızlı)
-    # 2. Öncelik: gemini-flash-latest (Listende var, en güncel alias)
-    models = ["models/gemini-2.0-flash", "models/gemini-flash-latest"]
+    # Senin listendeki modellerin TAM isimleri
+    models = [
+        "models/gemini-2.0-flash", 
+        "models/gemini-2.0-flash-lite-preview-02-05", 
+        "models/gemini-1.5-pro",
+        "models/gemini-pro"
+    ]
     
     prompt = (
         f"Act as a documentary filmmaker. Write a script about '{topic}'.\n"
@@ -70,10 +73,15 @@ def get_script_and_metadata(topic):
         try:
             r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
             
+            # KOTA DOLDUYSA (429 Hatası)
+            if r.status_code == 429:
+                print("Kota dolu! 10 saniye bekleniyor...")
+                time.sleep(10) # Bekle ve aynı modelle tekrar dene veya sonrakine geç
+                continue
+            
             if r.status_code == 200:
                 text = r.json()['candidates'][0]['content']['parts'][0]['text']
                 
-                # Basit Parsing
                 if "KEYWORDS:" in text:
                     parts = text.split("KEYWORDS:")
                     script = parts[0].strip().replace("*", "").replace("#", "")
@@ -85,14 +93,15 @@ def get_script_and_metadata(topic):
                 return script, keywords[:3]
             else:
                 print(f"{model} Hata Kodu: {r.status_code}")
-                continue # Diğer modele geç
+                continue
 
         except Exception as e:
             print(f"{model} Bağlantı Hatası: {e}")
+            time.sleep(2)
             continue
 
-    # Hiçbiri çalışmazsa HATA FIRLAT (Yedek metin yok)
-    raise Exception("Senin model listendeki yapay zekalara ulaşılamadı. API kotan dolmuş olabilir.")
+    # Hiçbiri çalışmazsa
+    raise Exception("Tüm modeller denendi ancak Google API yanıt vermiyor (Muhtemelen kota dolu). Lütfen 5 dakika sonra tekrar dene.")
 
 def get_stock_videos(keywords, duration):
     headers = {"Authorization": PEXELS_API_KEY}
@@ -191,7 +200,7 @@ def build_final_video(topic, script, keywords):
 def handle(m):
     try:
         topic = m.text.split(maxsplit=1)[1]
-        msg = bot.reply_to(m, f"🎬 '{topic}' için senaryo (V29 - Uyumlu Mod) hazırlanıyor...")
+        msg = bot.reply_to(m, f"🎬 '{topic}' için senaryo (V30 - Akıllı Bekleme Modu) hazırlanıyor...\n(Hata alırsam tekrar deneyeceğim, lütfen bekleyin)")
         script, keywords = get_script_and_metadata(topic)
         path, files = build_final_video(topic, script, keywords)
         with open(path, 'rb') as v: bot.send_video(m.chat.id, v)
@@ -201,5 +210,5 @@ def handle(m):
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (V29 - COMPATIBILITY MODE)...")
+print("Bot Başlatıldı (V30 - ANTI-QUOTA)...")
 bot.polling(non_stop=True)
