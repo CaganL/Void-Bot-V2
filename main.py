@@ -5,7 +5,6 @@ import random
 import json
 import time
 import numpy as np
-import textwrap
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip,
@@ -14,57 +13,53 @@ from moviepy.editor import (
 import asyncio
 import edge_tts
 
-# --- KRİTİK AYARLAR (Token Buraya Gömüldü) ---
-# Artık Railway ayarlarından değil, direkt buradan okuyacak.
-TELEGRAM_TOKEN = "8395962603:AAExpjo_toVhu1fdiEUB845J62dC_xPDR3c"
-
-# Diğer anahtarlar hala Railway'den alınabilir (Onlarda sorun yoktu)
+# --- AYARLAR (GÜVENLİ MOD) ---
+# GitHub kızmasın diye şifreyi buradan değil, Railway'den alıyoruz:
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# --- OTOMATİK HAYALET AVCISI (WEBHOOK SİLİCİ) ---
-# Bot her başladığında eski takılı kalan bağlantıları otomatik temizler.
+# --- OTOMATİK HAYALET TEMİZLEYİCİ ---
+# Bu fonksiyon, bot her açıldığında eski "Conflict" yaratan bağlantıları siler.
 def kill_webhook():
+    if not TELEGRAM_TOKEN:
+        print("⚠️ Token bulunamadı! Lütfen Railway Variables kısmını kontrol et.")
+        return
+        
     print("🧹 Hayalet bağlantılar (Webhook) temizleniyor...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True"
     try:
-        r = requests.get(url)
-        print(f"Sonuç: {r.text}")
+        r = requests.get(url, timeout=10)
+        print(f"Webhook Temizleme Sonucu: {r.text}")
     except Exception as e:
-        print(f"Temizleme hatası (Önemli değil): {e}")
+        print(f"⚠️ Temizleme sırasında hata (Önemli değil): {e}")
 
-kill_webhook() # Bot başlarken hemen çalıştır
+# Botu başlatmadan önce temizlik yap
+kill_webhook()
 
-# Botu başlat
+# Bot Kurulumu
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
 # YouTube Shorts Boyutları
 W, H = 1080, 1920
-FPS = 30
 
-# --- FONT ---
+# --- FONT İNDİRME ---
 def get_font():
     font_path = "Oswald-Bold.ttf"
     if not os.path.exists(font_path):
         url = "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf"
         try:
             r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                with open(font_path, "wb") as f:
-                    f.write(r.content)
+            with open(font_path, "wb") as f:
+                f.write(r.content)
         except:
             pass
     return font_path
 
-# --- AI İÇERİK ÜRETİCİ ---
+# --- AI HİKAYE OLUŞTURUCU ---
 def get_content(topic):
-    # Senin loglarında BAŞARILI olan modeller (Image 4435)
-    models_to_try = [
-        "gemini-2.5-flash",        # En son başarılı olan buydu
-        "gemini-2.0-flash-lite",   # Hızlı
-        "gemini-2.0-flash",        # Standart
-        "gemini-exp-1206"          # Yedek
-    ]
+    # Senin loglarında en başarılı çalışan model listesi
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
 
     prompt = (
         f"You are a professional YouTube Shorts creator. Create a viral scary story about '{topic}'. "
@@ -79,42 +74,30 @@ def get_content(topic):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
     for model in models_to_try:
-        # URL yapısını düzelttik
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
         print(f"🔄 Model deneniyor: {model}...")
 
         try:
             r = requests.post(url, json=payload, timeout=25)
-            
             if r.status_code == 200:
-                print(f"✅ BAŞARILI: {model}")
                 try:
                     raw_text = r.json()['candidates'][0]['content']['parts'][0]['text']
                     raw_text = raw_text.replace("```json", "").replace("```", "").strip()
                     return json.loads(raw_text)
                 except:
-                    print("⚠️ JSON formatı bozuk, diğer modele geçiliyor.")
                     continue
-            
             elif r.status_code == 429:
-                print(f"⚠️ KOTA DOLU ({model}). Hızlıca diğerine geçiliyor...")
+                print(f"⚠️ Kota dolu ({model}), geçiliyor...")
                 continue
-            
-            else:
-                print(f"❌ API HATA ({model}): {r.status_code}")
-                continue
-                
-        except Exception as e:
-            print(f"Bağlantı sorunu ({model}): {e}")
+        except:
             continue
 
-    # YEDEK SENARYO (Garanti)
-    print("🚨 TÜM MODELLER BAŞARISIZ! Yedek senaryo devreye giriyor.")
+    # Hiçbiri çalışmazsa yedek hikaye
     return {
-        "script": "I looked at my phone. It showed my face. But I was not holding it. Someone was behind me in the mirror. I froze. The figure smiled, but I didn't.",
+        "script": "I looked at the mirror. My reflection blinked. I didn't. Then it smiled.",
         "title": "The Mirror Glitch 😱",
-        "description": "Scary story generated by bot.",
-        "hashtags": "#horror #scary #shorts"
+        "description": "Scary story.",
+        "hashtags": "#horror"
     }
 
 # --- SES VE VİDEO ---
@@ -124,10 +107,10 @@ async def generate_tts_and_get_videos(script):
     await communicate.save("voice.mp3")
     
     audio = AudioFileClip("voice.mp3")
-    print(f"⏱️ Ses süresi: {audio.duration} sn. Video aranıyor...")
+    print(f"⏱️ Ses süresi: {audio.duration} sn.")
 
     headers = {"Authorization": PEXELS_API_KEY}
-    queries = ["horror", "scary", "dark", "shadow", "nightmare"]
+    queries = ["horror", "scary", "dark", "shadow", "fear"]
     random.shuffle(queries)
     paths = []
     current = 0
@@ -135,6 +118,7 @@ async def generate_tts_and_get_videos(script):
     
     for q in queries:
         if current >= audio.duration: break
+        # Pexels'den dikey video ara
         url = f"https://api.pexels.com/videos/search?query={q}&per_page=3&orientation=portrait"
         try:
             r = requests.get(url, headers=headers, timeout=10)
@@ -145,7 +129,7 @@ async def generate_tts_and_get_videos(script):
                 if current >= audio.duration: break
                 files = v.get("video_files", [])
                 if not files: continue
-                # Hızlı indirme için orta kaliteyi seç
+                # En iyi kaliteyi değil, en uyumlu olanı seç (Hızlı indirilsin)
                 link = sorted(files, key=lambda x: x["height"], reverse=True)[0]["link"]
                 
                 path = f"clip_{i}.mp4"
@@ -163,43 +147,14 @@ async def generate_tts_and_get_videos(script):
     return paths, audio
 
 # --- MONTAJ ---
-def make_subtitles(text, duration):
-    font_path = get_font()
-    try: font = ImageFont.truetype(font_path, 55)
-    except: font = ImageFont.load_default()
-    
-    words = text.split()
-    chunks = [" ".join(words[i:i+3]) for i in range(0, len(words), 3)]
-    if not chunks: return None
-    
-    per = duration / len(chunks)
-    clips = []
-    
-    for ch in chunks:
-        img = Image.new("RGBA", (W, H), (0,0,0,0))
-        draw = ImageDraw.Draw(img)
-        w_text = draw.textlength(ch, font=font)
-        x = (W - w_text) // 2
-        y = int(H * 0.75)
-        
-        # Siyah arka plan
-        draw.rectangle([x-20, y-10, x+w_text+20, y+70], fill=(0,0,0,160))
-        draw.text((x, y), ch, font=font, fill="white")
-        
-        clips.append(ImageClip(np.array(img)).set_duration(per))
-        
-    return concatenate_videoclips(clips, method="compose")
-
 def build_video(content):
     try:
         paths, audio = asyncio.run(generate_tts_and_get_videos(content["script"]))
-        
         if not paths: return None
             
-        print("🎬 Montaj yapılıyor...")
+        print("🎬 Montaj başlıyor...")
         clips = []
         for p in paths:
-            # Dikey formata zorla ve sesi kapat
             c = VideoFileClip(p).without_audio().resize(height=H)
             c = c.crop(x1=c.w/2 - W/2, width=W, height=H)
             clips.append(c)
@@ -208,30 +163,22 @@ def build_video(content):
         main = main.set_audio(audio)
         if main.duration > audio.duration:
             main = main.subclip(0, audio.duration)
-            
-        subs = make_subtitles(content["script"], main.duration)
-        final = CompositeVideoClip([main, subs], size=(W,H)) if subs else main
         
         out = "final.mp4"
-        # Hızlı render için ayarlar
-        final.write_videofile(out, fps=24, preset="ultrafast", threads=4, logger=None)
+        main.write_videofile(out, fps=24, preset="ultrafast", threads=4, logger=None)
         
-        # Temizlik
         audio.close()
         for c in clips: c.close()
-        for p in paths: 
-            if os.path.exists(p): os.remove(p)
-            
         return out
     except Exception as e:
-        print(f"Montaj hatası: {e}")
+        print(f"Montaj Hatası: {e}")
         return None
 
-# --- TELEGRAM MESAJLARI ---
+# --- TELEGRAM ---
 @bot.message_handler(commands=["video"])
 def handle_video(message):
     try:
-        bot.reply_to(message, "⏳ Video hazırlanıyor, lütfen bekle (1-2 dakika)...")
+        bot.reply_to(message, "⏳ Video hazırlanıyor... (Yaklaşık 1 dakika)")
         
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
@@ -240,7 +187,7 @@ def handle_video(message):
         path = build_video(content)
         
         if path and os.path.exists(path):
-            cap = f"🎥 **{content['title']}**\n\n{content['description']}\n\n{content['hashtags']}"
+            cap = f"🎥 **{content['title']}**\n\n{content['hashtags']}"
             with open(path, "rb") as v:
                 bot.send_video(message.chat.id, v, caption=cap, parse_mode="Markdown")
         else:
@@ -250,13 +197,7 @@ def handle_video(message):
         print(f"Hata: {e}")
         bot.reply_to(message, "Bir hata oluştu.")
 
-# Sonsuz döngü (Hata olsa bile tekrar başlar)
-while True:
-    try:
-        print("🤖 Bot çalışıyor...")
-        bot.polling(non_stop=True, interval=2)
-    except Exception as e:
-        print(f"⚠️ Bot durdu, yeniden başlıyor: {e}")
-        kill_webhook() # Hata durumunda da webhook'u temizle
-        time.sleep(5)
+# Botu Sürekli Çalıştır
+print("🤖 Bot başlatılıyor...")
+bot.polling(non_stop=True)
 
