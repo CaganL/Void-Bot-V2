@@ -49,18 +49,14 @@ async def generate_tts(text, out="voice.mp3", voice="en-US-GuyNeural"):
     except Exception as e:
         print(f"TTS Hatası: {e}")
 
-# --- İÇERİK ÜRETİCİ (GÜNCEL VE LİMİT DOSTU LİSTE) ---
+# --- İÇERİK ÜRETİCİ (SENİN LİSTENLE GÜNCELLENMİŞ) ---
 def get_content(topic):
-    # Senin listene göre EN VERİMLİ sıralama:
-    # 1. Flash Lite (En az kota yiyen, en hızlısı - İLK BU DENENECEK)
-    # 2. Flash 2.0 (Standart güçlü model)
-    # 3. Flash 2.5 (Yeni model)
-    # 4. Exp 1206 (Yedek)
+    # Senin hesabında kesin var olan modeller (Sırasıyla deneyecek)
     models_to_try = [
-        "gemini-2.0-flash-lite", 
-        "gemini-2.0-flash",
-        "gemini-2.5-flash",
-        "gemini-exp-1206"
+        "gemini-2.0-flash-lite",  # En hızlı ve ekonomik (Önce bunu dener)
+        "gemini-2.0-flash",       # Standart
+        "gemini-2.5-flash",       # Güncel güçlü model
+        "gemini-exp-1206"         # Deneysel yedek
     ]
 
     prompt = (
@@ -92,8 +88,8 @@ def get_content(topic):
                 return result
             
             elif r.status_code == 429:
-                print(f"⚠️ Kota Dolu ({model}). 5 sn bekleyip diğer modele geçiliyor...")
-                time.sleep(5) # Bekleme süresini artırdım
+                print(f"⚠️ Kota Dolu ({model}). Diğer modele geçiliyor...")
+                time.sleep(2) # Hızlıca diğerine geçsin
                 continue 
             
             elif r.status_code == 404:
@@ -102,11 +98,11 @@ def get_content(topic):
             
             else:
                 print(f"⚠️ API Hatası: {r.status_code} - {r.text}")
-                time.sleep(2)
+                time.sleep(1)
                 
         except Exception as e:
             print(f"Bağlantı Hatası ({model}): {e}")
-            time.sleep(2)
+            time.sleep(1)
 
     # Fallback (Hiçbir model çalışmazsa)
     print("❌ Tüm modeller başarısız oldu, yedek hikaye devreye giriyor.")
@@ -295,7 +291,7 @@ def handle_video(message):
         return
 
     topic = args[1]
-    bot.reply_to(message, "🎬 Video hazırlanıyor (1-2 dk sürebilir)...")
+    bot.reply_to(message, "🎬 Video hazırlanıyor, lütfen bekle...")
 
     content = get_content(topic)
     
