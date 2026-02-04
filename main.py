@@ -7,7 +7,7 @@ import numpy as np
 import textwrap
 import time
 import json
-import traceback
+import re
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips, afx, CompositeAudioClip
 
@@ -40,65 +40,74 @@ def get_safe_font():
         except: pass
     return font_path if os.path.exists(font_path) else None
 
+# --- YENİ SES MOTORU (BELGESEL TONU) ---
 def generate_tts(text, output="voice.mp3"):
     try:
-        subprocess.run(["edge-tts", "--voice", "en-US-ChristopherNeural", "--text", text, "--write-media", output], check=True)
+        # SES AYARLARI:
+        # en-GB-RyanNeural: İngiliz aksanı (Daha ciddi ve kaliteli duyulur)
+        # --rate=-10%: Konuşma hızı %10 yavaşlatıldı (Tane tane anlatım)
+        # --pitch=-2Hz: Ses tonu biraz kalınlaştırıldı (Tok ses)
+        command = [
+            "edge-tts",
+            "--voice", "en-GB-RyanNeural",
+            "--rate=-10%",
+            "--pitch=-2Hz",
+            "--text", text,
+            "--write-media", output
+        ]
+        subprocess.run(command, check=True)
         return True
-    except: return False
+    except Exception as e:
+        print(f"TTS Hatası: {e}")
+        return False
 
-# --- SENARYO MOTORU (FLASH ÖNCELİKLİ) ---
+# --- HİKAYE MOTORU ---
 def get_script_and_metadata(topic):
-    # SIRALAMA GÜNCELLENDİ: 2.5 Flash Başta!
-    models = [
-        "models/gemini-2.5-flash",     # 1. HIZLI VE YENİ (Favori)
-        "models/gemini-2.0-flash",     # 2. Alternatif Hızlı
-        "models/gemini-1.5-flash",     # 3. GARANTİ YEDEK
-    ]
+    # En yetenekli modeller
+    models = ["models/gemini-2.5-flash", "models/gemini-2.0-flash", "models/gemini-1.5-flash"]
     
     prompt = (
-        f"You are a viral content creator. Write a script about '{topic}'.\n"
+        f"Write a short, dramatic storytelling script about '{topic}' for a TikTok video.\n"
         "RULES:\n"
-        "1. HOOK: Start with a shocking question/statement.\n"
-        "2. TONE: Storytelling, deep, and engaging.\n"
-        "3. VISUALS: Provide 3 SPECIFIC visual keywords (e.g. 'storm clouds', 'crying eye').\n"
-        "4. FORMAT: JSON {{ \"script\": \"...\", \"keywords\": [\"...\", \"...\"] }}"
+        "1. DO NOT use intro phrases like 'Did you know'. Start directly with the action or mystery.\n"
+        "2. Make it emotional and engaging. Use short sentences.\n"
+        "3. Length: Around 100 words.\n"
+        "4. At the very end, add a line starting with 'KEYWORDS:' followed by 3 visual search terms.\n"
+        "Example output:\n"
+        "He walked into the room and froze. The silence was deafening... [Story continues]...\n"
+        "KEYWORDS: shadow, fear, dark room"
     )
     
-    for model_name in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={GEMINI_API_KEY}"
-        print(f"Deneniyor: {model_name}...")
-        
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={GEMINI_API_KEY}"
         try:
-            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
+            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=25)
             if r.status_code == 200:
-                raw = r.json()['candidates'][0]['content']['parts'][0]['text']
-                try:
-                    start = raw.find('{')
-                    end = raw.rfind('}') + 1
-                    if start != -1 and end != -1:
-                        data = json.loads(raw[start:end])
-                        if len(data.get("script", "").split()) > 30:
-                             return data.get("script"), "cinematic", data.get("keywords", [topic]), f"#shorts {topic}"
-                except:
-                    clean = raw.replace("```json", "").replace("```", "").strip()
-                    if len(clean.split()) > 30:
-                        return clean, "cinematic", [topic], f"#shorts {topic}"
-        except Exception as e:
-            print(f"{model_name} hata verdi, sıradakine geçiliyor...")
+                text = r.json()['candidates'][0]['content']['parts'][0]['text']
+                parts = text.split("KEYWORDS:")
+                script = parts[0].strip().replace("*", "").replace("#", "")
+                
+                if len(parts) > 1:
+                    keywords = [k.strip() for k in parts[1].split(",")]
+                else:
+                    keywords = [topic]
+                
+                # Sinematik hava için ek terimler
+                keywords.extend(["cinematic", "4k", "moody", "slow motion"])
+                
+                if len(script.split()) > 20:
+                    return script, "cinematic", keywords, f"#shorts {topic}"
+        except:
             time.sleep(1)
             continue
 
-    # Hepsi çökerse (Zor ihtimal)
-    fallback = (f"Did you know the incredible story of {topic}? Most people have no idea. "
-                "It involves details that are absolutely mind-blowing. "
-                "Experts have been studying this for years. "
-                "Stay tuned to learn more about this fascinating topic.")
-    return fallback, "cinematic", [topic], f"#shorts {topic}"
+    raise Exception("Hikaye oluşturulamadı. Lütfen başka bir konu deneyin.")
 
 def download_music(mood, filename="bg.mp3"):
     if os.path.exists(filename): os.remove(filename)
     try:
-        r = requests.get("https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3", timeout=15)
+        url = "https://cdn.pixabay.com/download/audio/2022/03/09/audio_c8c8a73467.mp3"
+        r = requests.get(url, timeout=15)
         if r.status_code == 200 and len(r.content) > 50000:
             with open(filename, "wb") as f: f.write(r.content)
             return True
@@ -107,10 +116,10 @@ def download_music(mood, filename="bg.mp3"):
 
 def get_stock_videos(keywords, duration):
     headers = {"Authorization": PEXELS_API_KEY}
-    queries = keywords if isinstance(keywords, list) else [keywords]
+    search_terms = keywords[:2] + ["abstract dark", "cinematic nature"]
     paths, curr_dur, i = [], 0, 0
     
-    for q in queries:
+    for q in search_terms:
         if curr_dur >= duration + 10: break
         try:
             r = requests.get(f"https://api.pexels.com/videos/search?query={q}&per_page=5&orientation=portrait", headers=headers, timeout=10)
@@ -118,8 +127,7 @@ def get_stock_videos(keywords, duration):
             for v in data:
                 if curr_dur >= duration + 10: break
                 best_link = next((f["link"] for f in v["video_files"] if f["height"] >= 1080), None)
-                if not best_link:
-                     best_link = next((f["link"] for f in v["video_files"] if f["height"] > 700), v["video_files"][0]["link"])
+                if not best_link: best_link = v["video_files"][0]["link"]
                 
                 path = f"v{i}.mp4"
                 with open(path, "wb") as f: f.write(requests.get(best_link).content)
@@ -129,13 +137,14 @@ def get_stock_videos(keywords, duration):
                 c.close()
                 i += 1
         except: pass
-    if not paths: raise Exception("Görsel video bulunamadı.")
+    
+    if not paths: raise Exception("Görsel bulunamadı.")
     return paths
 
 def create_subs(text, duration, size):
     W, H = size
     font_path = get_safe_font()
-    try: font = ImageFont.truetype(font_path, int(W/10)) if font_path else ImageFont.load_default()
+    try: font = ImageFont.truetype(font_path, int(W/11)) if font_path else ImageFont.load_default()
     except: font = ImageFont.load_default()
     
     words = text.split()
@@ -154,13 +163,13 @@ def create_subs(text, duration, size):
         img = Image.new('RGBA', (int(W), int(H)), (0,0,0,0))
         draw = ImageDraw.Draw(img)
         lines = textwrap.wrap(chunk.upper(), width=16)
-        y = H * 0.65 
+        y = H * 0.60
         for line in lines:
             bbox = draw.textbbox((0,0), line, font=font)
             w_txt, h_txt = bbox[2]-bbox[0], bbox[3]-bbox[1]
-            x_pos = (W-w_txt)/2
-            stroke_w = 6
-            draw.text((x_pos, y), line, font=font, fill="#FFD700", stroke_width=stroke_w, stroke_fill="black")
+            # Yarı saydam siyah arka plan (Okunabilirlik için en iyisi)
+            draw.rectangle([(W-w_txt)/2 - 10, y - 5, (W+w_txt)/2 + 10, y + h_txt + 5], fill=(0,0,0,160))
+            draw.text(((W-w_txt)/2, y), line, font=font, fill="#FFFFFF", stroke_width=2, stroke_fill="black")
             y += h_txt + 15
         clips.append(ImageClip(np.array(img)).set_duration(dur_per))
     return concatenate_videoclips(clips)
@@ -204,18 +213,17 @@ def build_final_video(topic, script, mood, keywords):
         
         if has_music:
             try:
-                bg = AudioFileClip("bg.mp3").volumex(0.12)
+                bg = AudioFileClip("bg.mp3").volumex(0.20)
                 bg = afx.audio_loop(bg, duration=main.duration)
                 main = main.set_audio(CompositeAudioClip([audio, bg]))
             except: main = main.set_audio(audio)
-        else:
-            main = main.set_audio(audio)
+        else: main = main.set_audio(audio)
             
         subs = create_subs(script, main.duration, main.size)
         final = CompositeVideoClip([main, subs])
         
         out = f"final_{int(time.time())}.mp4"
-        final.write_videofile(out, codec="libx264", audio_codec="aac", fps=30, preset="slow", bitrate="6000k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
+        final.write_videofile(out, codec="libx264", audio_codec="aac", fps=30, preset="medium", bitrate="5000k", ffmpeg_params=["-pix_fmt", "yuv420p"], threads=4)
         temp.append(out)
         
         for c in clips: c.close()
@@ -231,13 +239,11 @@ def handle(m):
             bot.reply_to(m, "Konu girin: /video [Konu]")
             return
         topic = m.text.split(maxsplit=1)[1]
-        
-        msg = bot.reply_to(m, f"⚡ '{topic}' için **GEMINI 2.5 FLASH** ile hızlandırılmış üretim başladı...")
+        msg = bot.reply_to(m, f"🎙️ '{topic}' hazırlanıyor...\n(Yeni Ses: Ryan - UK Accent)")
         
         script, mood, keywords, desc = get_script_and_metadata(topic)
         
-        keywords_str = ", ".join(keywords) if isinstance(keywords, list) else keywords
-        bot.edit_message_text(f"✅ Senaryo 2.5 Flash ile Hazır!\n🖼️ Görseller: {keywords_str}\n⏳ Film işleniyor (6000k Bitrate)...", m.chat.id, msg.message_id)
+        bot.edit_message_text(f"✅ Hikaye Hazır!\n🖼️ Görseller: {', '.join(keywords[:3])}\n⏳ Film işleniyor...", m.chat.id, msg.message_id)
         
         path, files = build_final_video(topic, script, mood, keywords)
         
@@ -246,11 +252,8 @@ def handle(m):
         cleanup_files(files)
         bot.delete_message(m.chat.id, msg.message_id)
     except Exception as e:
-        error_msg = str(e)
-        if "Google" in error_msg or "429" in error_msg:
-             error_msg = "⚠️ Modeller meşgul. Lütfen 30 saniye sonra tekrar deneyin."
-        bot.reply_to(m, f"❌ İşlem Durduruldu: {error_msg}")
+        bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (V21 - FLASH TURBO)...")
+print("Bot Başlatıldı (V23 - NEW VOICE)...")
 bot.polling(non_stop=True)
