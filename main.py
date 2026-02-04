@@ -31,7 +31,7 @@ kill_webhook()
 # Bot Kurulumu
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
-# YouTube Shorts Boyutları
+# YouTube Shorts Boyutları (1080p Dikey)
 W, H = 1080, 1920
 
 # --- FONT İNDİRME ---
@@ -45,14 +45,14 @@ def get_font():
         except: pass
     return font_path
 
-# --- AI HİKAYE (SÜRE AYARI BURADA) ---
+# --- AI HİKAYE (KISA VE ÖZ) ---
 def get_content(topic):
-    # Promptu güncelledik: 90 kelime sınırı = Yaklaşık 30-40 saniye video.
+    # Video süresini kontrol altında tutmak için kelime sınırı
     models = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     prompt = (
         f"Create a viral scary story about '{topic}'. "
         "Keep it VERY SHORT (Strictly under 90 words). "
-        "The story must be fast-paced and end with a twist. "
+        "The story must be fast-paced, engaging and end with a twist. "
         "Output ONLY JSON: {'script': 'story text', 'title': 'title', 'hashtags': '#tags'}"
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -81,7 +81,7 @@ async def generate_resources(script):
     
     # Video Arama
     headers = {"Authorization": PEXELS_API_KEY}
-    queries = ["horror", "scary", "dark", "creepy", "nightmare", "suspense"]
+    queries = ["horror", "scary", "dark", "creepy", "nightmare", "suspense", "thriller"]
     random.shuffle(queries)
     paths = []
     current_dur = 0
@@ -96,9 +96,13 @@ async def generate_resources(script):
                 files = v.get("video_files", [])
                 if not files: continue
                 
-                # Kalite ve Boyut Dengesi
+                # KALİTE AYARI:
+                # 4K indirmeye gerek yok (çok büyük olur), ama en iyi HD (1080p veya 720p) olanı al.
+                # width değeri 720'den büyük olanları filtrele
                 suitable = [f for f in files if f["width"] >= 720]
                 if not suitable: suitable = files
+                
+                # En yüksek çözünürlüklü olanı seç
                 link = sorted(suitable, key=lambda x: x["height"], reverse=True)[0]["link"]
                 
                 path = f"clip_{len(paths)}.mp4"
@@ -131,7 +135,7 @@ def smart_resize(clip):
         
     return clip
 
-# --- MONTAJ VE SIKIŞTIRMA ---
+# --- MONTAJ VE YÜKSEK KALİTE ÇIKTI ---
 def build_video(content):
     try:
         paths, audio = asyncio.run(generate_resources(content["script"]))
@@ -155,14 +159,16 @@ def build_video(content):
         
         out = "final.mp4"
         
-        # SIKIŞTIRMA: 2500k bitrate ile dosya boyutu 50MB altında kalır.
+        # --- YÜKSEK KALİTE AYARLARI ---
+        # 40 saniyelik video için 5500k bitrate yaklaşık 28-30 MB tutar.
+        # Bu hem çok net görünür hem de Telegram 50MB sınırına takılmaz.
         final_clip.write_videofile(
             out, 
-            fps=24, 
+            fps=24, # Sinematik
             codec="libx264", 
-            preset="faster", 
-            bitrate="2500k", 
-            audio_bitrate="128k",
+            preset="fast", # Ultrafast'ten daha kaliteli sıkıştırma yapar
+            bitrate="5500k", # YÜKSEK KALİTE (HD)
+            audio_bitrate="192k", # YÜKSEK SES KALİTESİ
             threads=4, 
             logger=None
         )
@@ -182,7 +188,7 @@ def build_video(content):
 @bot.message_handler(commands=["video"])
 def handle_video(message):
     try:
-        bot.reply_to(message, "🎬 Video hazırlanıyor... (30-45 sn, HD ve Sıkıştırılmış)")
+        bot.reply_to(message, "🎬 Video hazırlanıyor... (HD Kalite, ~40 saniye)")
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
