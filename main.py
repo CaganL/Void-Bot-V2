@@ -31,7 +31,7 @@ kill_webhook()
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 1080, 1920
 
-# --- FONT İNDİRME ---
+# --- FONT ---
 def get_font():
     font_path = "Oswald-Bold.ttf"
     if not os.path.exists(font_path):
@@ -42,20 +42,16 @@ def get_font():
         except: pass
     return font_path
 
-# --- AI İÇERİK (HOOK ODAKLI) ---
+# --- AI İÇERİK ---
 def get_content(topic):
     models = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     
-    # Promptu değiştirdik: Artık özel bir "HOOK" cümlesi istiyoruz.
     prompt = (
         f"You are a viral YouTube Shorts expert. Create a script about '{topic}'. "
         "Strictly under 100 words. "
         "IMPORTANT: Generate a 'hook' sentence (max 5 words) that stops the scroll immediately. "
-        "1. If 'motivation': Hook ex: 'Stop Being Lazy!', 'Wake Up!' "
-        "2. If 'horror': Hook ex: 'Don't Look Back!', 'Did you hear that?' "
-        "Provide 5 visual search keywords for Pexels. "
         "Output ONLY JSON: "
-        "{'script': 'text', 'hook': 'HOOK TEXT HERE', 'title': 'Clickbait Title', 'hashtags': '#tags', 'visual_keywords': ['tag1', 'tag2']}"
+        "{'script': 'text without hook', 'hook': 'HOOK TEXT', 'title': 'Title', 'hashtags': '#tags', 'visual_keywords': ['tag1', 'tag2']}"
     )
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -74,18 +70,24 @@ def get_content(topic):
 
     return {
         "script": "Success is waiting for you.",
-        "hook": "WAKE UP NOW! ⚠️",
+        "hook": "WAKE UP NOW!",
         "title": "Motivation Daily",
         "hashtags": "#shorts",
         "visual_keywords": ["motivation"]
     }
 
-# --- MEDYA İNDİRME ---
+# --- MEDYA VE SES (GÜNCELLENDİ) ---
 async def generate_resources(content):
     script = content["script"]
+    hook = content.get("hook", "")
     keywords = content["visual_keywords"]
     
-    communicate = edge_tts.Communicate(script, "en-US-GuyNeural")
+    # 🔥 İŞTE SİHİRLİ DOKUNUŞ BURADA:
+    # Hook yazısını, konuşma metninin en başına ekliyoruz.
+    # Böylece video "BAŞARISIZ OLMA!" diye bağırarak başlıyor.
+    full_script = f"{hook}! {script}"
+    
+    communicate = edge_tts.Communicate(full_script, "en-US-GuyNeural")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -105,7 +107,6 @@ async def generate_resources(content):
                 files = v.get("video_files", [])
                 if not files: continue
                 
-                # Kalite Filtresi
                 suitable = [f for f in files if f["width"] >= 720]
                 if not suitable: suitable = files
                 link = sorted(suitable, key=lambda x: x["height"], reverse=True)[0]["link"]
@@ -138,46 +139,45 @@ def smart_resize(clip):
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
     return clip
 
-# --- HOOK YAZISI OLUŞTURUCU (YENİ ÖZELLİK) ---
+# --- HOOK GÖRSELİ ---
 def create_hook_overlay(text, duration=3):
-    # Şeffaf bir resim oluştur
     img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # Fontu yükle (Çok büyük boyutta)
-    font_size = 130
+    # Font boyutu
+    font_size = 110 
     try:
         font = ImageFont.truetype(get_font(), font_size)
     except:
         font = ImageFont.load_default()
 
-    # Metni satırlara böl (Ekrana sığsın diye)
-    lines = textwrap.wrap(text.upper(), width=15)
+    # Metni sığdır
+    lines = textwrap.wrap(text.upper(), width=12)
     
-    # Metnin toplam yüksekliğini hesapla
+    # Yüksekliği hesapla
     total_height = 0
     line_heights = []
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font)
         h = bbox[3] - bbox[1]
         line_heights.append(h)
-        total_height += h + 20 # Satır aralığı
+        total_height += h + 30 
 
-    # Ortaya yazdırmaya başla
     y_text = (H - total_height) / 2
+    
+    # Kırmızı arkaplan efekti (Vurgu için)
+    # Metnin arkasına hafif bir gölge/kutu ekleyelim ki her videoda okunsun
+    box_padding = 20
     
     for i, line in enumerate(lines):
         bbox = draw.textbbox((0, 0), line, font=font)
         w = bbox[2] - bbox[0]
         x_text = (W - w) / 2
         
-        # Siyah Kenarlık (Okunabilirlik için)
-        stroke_width = 8
-        draw.text((x_text, y_text), line, font=font, fill="white", stroke_width=stroke_width, stroke_fill="black")
-        
-        y_text += line_heights[i] + 20
+        # Metin
+        draw.text((x_text, y_text), line, font=font, fill="white", stroke_width=10, stroke_fill="black")
+        y_text += line_heights[i] + 30
 
-    # Resmi MoviePy klibine çevir
     img_np = np.array(img)
     txt_clip = ImageClip(img_np).set_duration(duration)
     return txt_clip
@@ -198,24 +198,20 @@ def build_video(content):
 
         if not clips: return None
 
-        # Ana Video Birleşimi
         main_clip = concatenate_videoclips(clips, method="compose")
         main_clip = main_clip.set_audio(audio)
         
         if main_clip.duration > audio.duration:
             main_clip = main_clip.subclip(0, audio.duration)
         
-        # --- HOOK EKLENİYOR ---
-        # Videonun üstüne, ilk 3 saniye boyunca Hook yazısını yapıştırıyoruz
+        # Hook Görseli Ekle
         hook_text = content.get("hook", content["title"])
-        hook_overlay = create_hook_overlay(hook_text, duration=3.0)
+        hook_overlay = create_hook_overlay(hook_text, duration=3.0) # İlk 3 saniye
         
-        # CompositeVideoClip ile üst üste bindir
         final_video = CompositeVideoClip([main_clip, hook_overlay.set_start(0)])
 
         out = "final.mp4"
         
-        # Render
         final_video.write_videofile(
             out, fps=24, codec="libx264", preset="ultrafast", 
             bitrate="3500k", audio_bitrate="192k", threads=4, logger=None
@@ -238,22 +234,20 @@ def handle_video(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "motivation"
         
-        bot.reply_to(message, f"🎥 Konu: **{topic}**\n🎣 Hook (Kanca) hazırlanıyor...")
+        bot.reply_to(message, f"🎥 Konu: **{topic}**\n🔊 Hem Sesli Hem Görsel Hook Hazırlanıyor...")
         
         content = get_content(topic)
         path = build_video(content)
         
         if path and os.path.exists(path):
-            # AÇIKLAMA (HOOK EN BAŞTA)
             caption_text = (
-                f"🔥 **{content['hook']}**\n\n" # <-- HOOK BURAYA GELDİ
+                f"🔥 **{content['hook']}**\n\n"
                 f"🎥 {content['title']}\n"
                 f"📝 _Script:_ {content['script'][:100]}...\n\n"
                 f"{content['hashtags']}"
             )
             
-            if len(caption_text) > 1000:
-                caption_text = caption_text[:1000] + "..."
+            if len(caption_text) > 1000: caption_text = caption_text[:1000]
 
             with open(path, "rb") as v:
                 bot.send_video(message.chat.id, v, caption=caption_text, parse_mode="Markdown")
@@ -263,6 +257,6 @@ def handle_video(message):
     except Exception as e:
         bot.reply_to(message, f"Hata: {e}")
 
-print("🤖 Bot Başlatıldı!")
+print("🤖 Tam Donanımlı Bot Başlatıldı!")
 bot.polling(non_stop=True)
 
