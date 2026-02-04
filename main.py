@@ -45,13 +45,14 @@ def get_font():
         except: pass
     return font_path
 
-# --- AI HİKAYE ---
+# --- AI HİKAYE (SÜRE AYARI BURADA) ---
 def get_content(topic):
-    # Promptu kısalttık ki video 60 saniyeyi aşıp devasa boyutlara ulaşmasın
+    # Promptu güncelledik: 90 kelime sınırı = Yaklaşık 30-40 saniye video.
     models = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     prompt = (
         f"Create a viral scary story about '{topic}'. "
-        "Keep it under 150 words (max 50 seconds video). "
+        "Keep it VERY SHORT (Strictly under 90 words). "
+        "The story must be fast-paced and end with a twist. "
         "Output ONLY JSON: {'script': 'story text', 'title': 'title', 'hashtags': '#tags'}"
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -94,8 +95,8 @@ async def generate_resources(script):
                 if current_dur >= audio.duration: break
                 files = v.get("video_files", [])
                 if not files: continue
-                # HD kaliteyi seç (4K seçersek dosya çok büyür, o yüzden width 1080 civarı olanı alıyoruz)
-                # Dosya boyutunu küçültmek için en büyük değil, en uygun olanı alıyoruz
+                
+                # Kalite ve Boyut Dengesi
                 suitable = [f for f in files if f["width"] >= 720]
                 if not suitable: suitable = files
                 link = sorted(suitable, key=lambda x: x["height"], reverse=True)[0]["link"]
@@ -154,8 +155,7 @@ def build_video(content):
         
         out = "final.mp4"
         
-        # --- KRİTİK SIKIŞTIRMA AYARLARI ---
-        # Bitrate 2500k = Yaklaşık 1 dakikalık video 20-30 MB olur (Telegram limiti 50MB)
+        # SIKIŞTIRMA: 2500k bitrate ile dosya boyutu 50MB altında kalır.
         final_clip.write_videofile(
             out, 
             fps=24, 
@@ -182,7 +182,7 @@ def build_video(content):
 @bot.message_handler(commands=["video"])
 def handle_video(message):
     try:
-        bot.reply_to(message, "🎬 Video hazırlanıyor... (Sıkıştırma uygulanıyor, lütfen bekle)")
+        bot.reply_to(message, "🎬 Video hazırlanıyor... (30-45 sn, HD ve Sıkıştırılmış)")
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
