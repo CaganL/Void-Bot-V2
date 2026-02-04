@@ -2,8 +2,8 @@ pyTelegramBotAPI
 moviepy==1.0.3
 requests
 edge-tts
-Pillow
-numpy
+Pillow==9.5.0
+numpy<2
 imageio==2.9.0
 imageio-ffmpeg
 decorator==4.4.2
