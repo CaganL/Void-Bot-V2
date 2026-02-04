@@ -19,13 +19,12 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Botu başlatırken threaded=False yapıyoruz ki hata olursa görelim ama çökmesin
+# Botu başlat (Threaded=False hata takibi için daha iyidir)
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
 W, H = 1080, 1920
 FPS = 30
 
-# --- FONT ---
 def get_font():
     font_path = "Oswald-Bold.ttf"
     if not os.path.exists(font_path):
@@ -39,22 +38,13 @@ def get_font():
             pass
     return font_path
 
-# --- TTS ---
-async def generate_tts(text, out="voice.mp3", voice="en-US-GuyNeural"):
-    communicate = edge_tts.Communicate(text, voice)
-    try:
-        if os.path.exists(out): os.remove(out)
-        await communicate.save(out)
-    except Exception as e:
-        print(f"TTS Hatası: {e}")
-
-# --- İÇERİK ÜRETİCİ ---
+# --- 1. ADIM: HİKAYE YAZILIMI ---
 def get_content(topic):
-    # Senin modellerin
+    # Senin başarı aldığın liste (Önce Lite, sonra güçlüler)
     models_to_try = [
         "gemini-2.0-flash-lite", 
-        "gemini-2.0-flash",
         "gemini-2.5-flash",
+        "gemini-2.0-flash",
         "gemini-exp-1206"
     ]
 
@@ -84,32 +74,40 @@ def get_content(topic):
                     raw_text = raw_text.replace("```json", "").replace("```", "").strip()
                     return json.loads(raw_text)
                 except:
-                    continue # JSON bozuksa diğer modele geç
+                    print(f"⚠️ JSON Hatası ({model}), diğerine geçiliyor.")
+                    continue
             
             elif r.status_code == 429:
                 print(f"⚠️ KOTA DOLU ({model}). Hızlıca diğerine geçiliyor...")
-                continue # Beklemeden diğer modele geç
+                continue
             
             else:
-                print(f"❌ HATA ({model}): {r.status_code}")
+                print(f"❌ API HATA ({model}): {r.status_code}")
                 continue
                 
         except Exception as e:
             print(f"Bağlantı sorunu ({model}): {e}")
             continue
 
-    # --- GARANTİ YEDEK ---
-    # Eğer yukarıdakilerin hepsi başarısız olursa bu çalışacak
+    # YEDEK SENARYO
     print("🚨 TÜM MODELLER BAŞARISIZ! Yedek senaryo devreye giriyor.")
     return {
-        "script": "I woke up in the middle of the night. The house was silent. Too silent. I reached for my phone to check the time, but it wasn't there. Then I heard a sound breathing under my bed. I slowly looked down. Two red eyes were staring back at me. They whispered my name. I tried to scream, but no sound came out. That is when I realized, I was not in my room anymore.",
-        "title": "Nightmare Reality 🌑",
-        "description": "When your safe place becomes your worst nightmare.",
-        "hashtags": "#horror #scary #creepy #shorts"
+        "script": "I woke up. The house was silent. I reached for my phone. It wasn't there. Then I heard a sound breathing under my bed. I looked down. Red eyes were staring back.",
+        "title": "Nightmare 🌑",
+        "description": "Scary story.",
+        "hashtags": "#horror #shorts"
     }
 
-# --- VİDEO İŞLEMLERİ (Basitleştirilmiş) ---
-def get_videos(total_duration):
+# --- 2. ADIM: TTS VE VİDEO İNDİRME ---
+async def generate_tts_and_get_videos(script):
+    print("🔊 Ses oluşturuluyor (TTS)...")
+    communicate = edge_tts.Communicate(script, "en-US-GuyNeural")
+    await communicate.save("voice.mp3")
+    
+    audio = AudioFileClip("voice.mp3")
+    duration = audio.duration
+    print(f"⏱️ Ses süresi: {duration} saniye. Videolar aranıyor...")
+
     headers = {"Authorization": PEXELS_API_KEY}
     queries = ["horror", "scary", "dark", "shadow", "night"]
     random.shuffle(queries)
@@ -118,7 +116,8 @@ def get_videos(total_duration):
     i = 0
     
     for q in queries:
-        if current >= total_duration: break
+        if current >= duration: break
+        print(f"🔎 Pexels'de aranıyor: {q}")
         url = f"https://api.pexels.com/videos/search?query={q}&per_page=3&orientation=portrait"
         try:
             r = requests.get(url, headers=headers, timeout=10)
@@ -126,34 +125,36 @@ def get_videos(total_duration):
             data = r.json().get("videos", [])
             
             for v in data:
-                if current >= total_duration: break
+                if current >= duration: break
                 files = v.get("video_files", [])
                 if not files: continue
-                # En düşük kaliteyi değil, ortalama bir kaliteyi alalım ki işlem hızlı olsun
+                # SD kalite (Hızlı indirme için)
                 link = sorted(files, key=lambda x: x["height"], reverse=True)[0]["link"]
                 
                 path = f"clip_{i}.mp4"
+                print(f"⬇️ Video indiriliyor: {path}")
                 with open(path, "wb") as f:
                     f.write(requests.get(link, timeout=15).content)
                 
-                # Kontrol et
                 clip = VideoFileClip(path)
                 if clip.duration > 1:
                     paths.append(path)
                     current += clip.duration
                     i += 1
                 clip.close()
-        except:
+        except Exception as e:
+            print(f"Video hatası: {e}")
             continue
-    return paths
+            
+    return paths, audio
 
+# --- 3. ADIM: MONTAJ ---
 def make_subtitles(text, duration):
     font_path = get_font()
     try: font = ImageFont.truetype(font_path, 55)
     except: font = ImageFont.load_default()
     
     words = text.split()
-    # Kelimeleri 3'erli grupla (daha hızlı okuma)
     chunks = [" ".join(words[i:i+3]) for i in range(0, len(words), 3)]
     if not chunks: return None
     
@@ -163,59 +164,53 @@ def make_subtitles(text, duration):
     for ch in chunks:
         img = Image.new("RGBA", (W, H), (0,0,0,0))
         draw = ImageDraw.Draw(img)
-        
-        # Basit ortalama
         w_text = draw.textlength(ch, font=font)
         x = (W - w_text) // 2
         y = int(H * 0.75)
-        
         draw.rectangle([x-20, y-10, x+w_text+20, y+70], fill=(0,0,0,140))
         draw.text((x, y), ch, font=font, fill="white")
-        
         clips.append(ImageClip(np.array(img)).set_duration(per))
         
     return concatenate_videoclips(clips, method="compose")
 
 def build_video(content):
     try:
-        script = content["script"]
-        asyncio.run(generate_tts(script, "voice.mp3"))
-        
-        audio = AudioFileClip("voice.mp3")
-        paths = get_videos(audio.duration)
+        paths, audio = asyncio.run(generate_tts_and_get_videos(content["script"]))
         
         if not paths:
-            print("Video bulunamadı!")
+            print("❌ HATA: Hiç video indirilemedi!")
             return None
             
-        clips = [VideoFileClip(p).without_audio().resize(height=H).crop(x1=0, y1=0, width=W, height=H) for p in paths]
-        
-        # Boyut hatası almamak için her klibi zorla 1080x1920 yap
-        final_clips = []
-        for c in clips:
-            c = c.resize(newsize=(W, H)) 
-            final_clips.append(c)
+        print(f"🎬 {len(paths)} klip birleştiriliyor...")
+        clips = []
+        for p in paths:
+            # Bellek dostu resize işlemi
+            c = VideoFileClip(p).without_audio().resize(height=H)
+            c = c.crop(x1=c.w/2 - W/2, width=W, height=H)
+            clips.append(c)
 
-        main = concatenate_videoclips(final_clips, method="compose")
+        main = concatenate_videoclips(clips, method="compose")
         main = main.set_audio(audio)
         if main.duration > audio.duration:
             main = main.subclip(0, audio.duration)
             
-        subs = make_subtitles(script, main.duration)
+        print("📝 Altyazılar ekleniyor...")
+        subs = make_subtitles(content["script"], main.duration)
         final = CompositeVideoClip([main, subs], size=(W,H)) if subs else main
         
         out = "final.mp4"
-        final.write_videofile(out, fps=24, preset="ultrafast", threads=4) # Hız için optimize
+        print("💾 Video render alınıyor (Bu biraz sürebilir)...")
+        # Preset ultrafast ile hızlı render
+        final.write_videofile(out, fps=24, preset="ultrafast", threads=4, logger=None)
         
-        # Temizlik
         audio.close()
-        for c in final_clips: c.close()
+        for c in clips: c.close()
         for p in paths: 
             if os.path.exists(p): os.remove(p)
             
         return out
     except Exception as e:
-        print(f"Montaj hatası: {e}")
+        print(f"❌ MONTAJ HATASI: {e}")
         return None
 
 # --- TELEGRAM ---
@@ -225,27 +220,32 @@ def handle_video(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        bot.reply_to(message, "⏳ Video hazırlanıyor... (API hataları olsa bile yedek devreye girecek)")
+        bot.reply_to(message, "⏳ Video hazırlanıyor... Logları takip et.")
         
+        print(f"🚀 Yeni İstek: {topic}")
         content = get_content(topic)
         path = build_video(content)
         
         if path and os.path.exists(path):
+            print("📤 Video Telegram'a yükleniyor...")
             cap = f"🎥 **{content['title']}**\n\n{content['hashtags']}"
             with open(path, "rb") as v:
                 bot.send_video(message.chat.id, v, caption=cap, parse_mode="Markdown")
+            print("✅ İŞLEM TAMAMLANDI!")
         else:
-            bot.reply_to(message, "❌ Video oluşturulamadı.")
+            bot.reply_to(message, "❌ Video oluşturulamadı. Loglara bak.")
             
     except Exception as e:
-        bot.reply_to(message, f"Beklenmedik hata: {e}")
+        print(f"Genel Hata: {e}")
+        bot.reply_to(message, f"Hata: {e}")
 
-# Botu sürekli yeniden başlatma modunda çalıştırıyoruz (Auto-Restart)
+# Sonsuz döngü (Çökse bile kalkar)
 while True:
     try:
-        print("Bot başlatılıyor...")
+        print("🤖 Bot başlatılıyor...")
         bot.polling(non_stop=True, interval=2)
     except Exception as e:
-        print(f"Bot çöktü, 5 saniye sonra yeniden başlıyor: {e}")
+        print(f"⚠️ Bot çöktü (Muhtemelen 409 Conflict): {e}")
+        print("♻️ 5 saniye içinde yeniden başlatılıyor...")
         time.sleep(5)
 
