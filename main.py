@@ -9,7 +9,7 @@ import time
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip,
-    concatenate_videoclips, afx, CompositeAudioClip
+    concatenate_videoclips
 )
 
 # --- AYARLAR ---
@@ -21,14 +21,6 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = getattr(Image, 'Resampling', Image).LANCZOS
-
-def cleanup_files(file_list):
-    for f in file_list:
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-            except:
-                pass
 
 def get_safe_font():
     font_path = "Oswald-Bold.ttf"
@@ -45,7 +37,7 @@ def get_safe_font():
             pass
     return font_path if os.path.exists(font_path) else None
 
-# --- TTS (FIXLENDİ) ---
+# --- TTS (RAILWAY UYUMLU) ---
 def generate_tts(text, output="voice.mp3"):
     try:
         cmd = [
@@ -53,8 +45,8 @@ def generate_tts(text, output="voice.mp3"):
             "--voice=en-GB-RyanNeural",
             "--rate=-10%",
             "--pitch=-2Hz",
-            "--text", text,
-            "--write-media", output
+            "--write-media", output,
+            text  # ⬅️ METİN EN SONA ARGÜMAN OLARAK GİDİYOR
         ]
         subprocess.run(cmd, check=True)
         return True
@@ -80,7 +72,6 @@ def get_script(topic):
 
     return "When I looked in the mirror, it was not me anymore. Something else was smiling back at me. I tried to scream, but nothing came out."
 
-# --- Hook'u başa alma ---
 def make_hook_script(script):
     sentences = script.replace("!", ".").replace("?", ".").split(".")
     sentences = [s.strip() for s in sentences if s.strip()]
@@ -105,7 +96,6 @@ def get_multiple_videos(total_duration):
     paths = []
     current_dur = 0
     i = 0
-
     random.shuffle(queries)
 
     try:
@@ -113,7 +103,7 @@ def get_multiple_videos(total_duration):
             if current_dur >= total_duration:
                 break
 
-            search_url = f"https://api.pexels.com/videos/search?query={q}&per_page=8&orientation=portrait"
+            search_url = f"https://api.pexels.com/videos/search?query={q}&per_page=6&orientation=portrait"
             r = requests.get(search_url, headers=headers, timeout=15)
             videos_data = r.json().get("videos", [])
             if not videos_data:
@@ -191,20 +181,16 @@ def create_subtitles(text, total_duration, video_size):
 
 # --- MONTAJ ---
 def build_video(script):
-    temp_files = []
     try:
         ok = generate_tts(script, "voice.mp3")
         if not ok:
             return "TTS üretilemedi."
-        temp_files.append("voice.mp3")
 
         audio = AudioFileClip("voice.mp3")
 
         paths = get_multiple_videos(audio.duration)
         if not paths:
             return "Görüntü bulunamadı."
-
-        temp_files.extend(paths)
 
         video_clips = []
         for p in paths:
@@ -246,12 +232,9 @@ def build_video(script):
             c.close()
         audio.close()
 
-        temp_files.append(out)
         return out
     except Exception as e:
         return f"Hata: {str(e)}"
-    finally:
-        pass
 
 # --- TELEGRAM ---
 @bot.message_handler(commands=['video'])
@@ -269,7 +252,7 @@ def handle_video(message):
 
     video_path = build_video(script)
 
-    if "final_video.mp4" in video_path and os.path.exists(video_path):
+    if video_path == "final_video.mp4" and os.path.exists(video_path):
         with open(video_path, 'rb') as v:
             bot.send_video(message.chat.id, v, caption=f"🎬 Konu: {topic}")
     else:
