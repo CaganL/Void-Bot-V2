@@ -49,16 +49,16 @@ async def generate_tts(text, out="voice.mp3", voice="en-US-GuyNeural"):
     except Exception as e:
         print(f"TTS Hatası: {e}")
 
-# --- İÇERİK ÜRETİCİ (Senin Listenle Güncellendi) ---
+# --- İÇERİK ÜRETİCİ (GÜNCEL VE LİMİT DOSTU LİSTE) ---
 def get_content(topic):
-    # Senin sağladığın listedeki en uygun modeller:
-    # 1. Flash 2.0 (Dengeli)
-    # 2. Flash Lite (Hızlı ve az kota yer - Hata alırsan buna geçer)
-    # 3. Flash 2.5 (Yeni ve güçlü)
-    # 4. Exp 1206 (Deneysel ama zeki)
+    # Senin listene göre EN VERİMLİ sıralama:
+    # 1. Flash Lite (En az kota yiyen, en hızlısı - İLK BU DENENECEK)
+    # 2. Flash 2.0 (Standart güçlü model)
+    # 3. Flash 2.5 (Yeni model)
+    # 4. Exp 1206 (Yedek)
     models_to_try = [
+        "gemini-2.0-flash-lite", 
         "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
         "gemini-2.5-flash",
         "gemini-exp-1206"
     ]
@@ -76,7 +76,7 @@ def get_content(topic):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
     for model in models_to_try:
-        # 'models/' ön ekini API URL'sine düzgün yerleştirmek için:
+        # API URL'si
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
         print(f"🔄 Model deneniyor: {model}...")
 
@@ -92,21 +92,21 @@ def get_content(topic):
                 return result
             
             elif r.status_code == 429:
-                print(f"⚠️ Kota Dolu ({model}). Daha hafif bir modele geçiliyor...")
-                time.sleep(2)
-                continue # Sıradaki modele geç
+                print(f"⚠️ Kota Dolu ({model}). 5 sn bekleyip diğer modele geçiliyor...")
+                time.sleep(5) # Bekleme süresini artırdım
+                continue 
             
             elif r.status_code == 404:
-                print(f"❌ Model Bulunamadı ({model}). İsmi yanlış olabilir, diğerine geçiliyor...")
+                print(f"❌ Model Bulunamadı ({model}). Diğerine geçiliyor...")
                 continue
             
             else:
                 print(f"⚠️ API Hatası: {r.status_code} - {r.text}")
-                time.sleep(1)
+                time.sleep(2)
                 
         except Exception as e:
             print(f"Bağlantı Hatası ({model}): {e}")
-            time.sleep(1)
+            time.sleep(2)
 
     # Fallback (Hiçbir model çalışmazsa)
     print("❌ Tüm modeller başarısız oldu, yedek hikaye devreye giriyor.")
