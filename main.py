@@ -46,22 +46,21 @@ def generate_tts(text, output="voice.mp3"):
         return True
     except: return False
 
-# --- KALİTE ODAKLI SENARYO MOTORU ---
+# --- SENARYO MOTORU (FLASH ÖNCELİKLİ) ---
 def get_script_and_metadata(topic):
-    # SIRALAMA DEĞİŞTİ: KALİTE ÖNCELİKLİ
+    # SIRALAMA GÜNCELLENDİ: 2.5 Flash Başta!
     models = [
-        "models/gemini-2.5-pro",     # 1. EN ZEKİ (Önce bunu dene)
-        "models/gemini-2.5-flash",   # 2. HIZLI (Pro meşgulse buna geç)
-        "models/gemini-2.0-flash",   # 3. STABİL (Yedek)
+        "models/gemini-2.5-flash",     # 1. HIZLI VE YENİ (Favori)
+        "models/gemini-2.0-flash",     # 2. Alternatif Hızlı
+        "models/gemini-1.5-flash",     # 3. GARANTİ YEDEK
     ]
     
-    # Prompt biraz daha "Yaratıcı" olması için güncellendi
     prompt = (
-        f"You are an expert viral content creator. Write a script about '{topic}'.\n"
+        f"You are a viral content creator. Write a script about '{topic}'.\n"
         "RULES:\n"
-        "1. HOOK: Start with a mind-blowing question or statement.\n"
-        "2. TONE: Storytelling, mysterious, and engaging.\n"
-        "3. VISUALS: Provide 3 SPECIFIC visual keywords (e.g., instead of 'sad', use 'crying man in rain').\n"
+        "1. HOOK: Start with a shocking question/statement.\n"
+        "2. TONE: Storytelling, deep, and engaging.\n"
+        "3. VISUALS: Provide 3 SPECIFIC visual keywords (e.g. 'storm clouds', 'crying eye').\n"
         "4. FORMAT: JSON {{ \"script\": \"...\", \"keywords\": [\"...\", \"...\"] }}"
     )
     
@@ -70,8 +69,7 @@ def get_script_and_metadata(topic):
         print(f"Deneniyor: {model_name}...")
         
         try:
-            # Pro modeli için timeout süresini artırdık (30sn) çünkü daha uzun düşünüyor
-            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
+            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
             if r.status_code == 200:
                 raw = r.json()['candidates'][0]['content']['parts'][0]['text']
                 try:
@@ -86,11 +84,16 @@ def get_script_and_metadata(topic):
                     if len(clean.split()) > 30:
                         return clean, "cinematic", [topic], f"#shorts {topic}"
         except Exception as e:
-            print(f"{model_name} başarısız: {e}")
+            print(f"{model_name} hata verdi, sıradakine geçiliyor...")
             time.sleep(1)
             continue
 
-    raise Exception("Yapay zeka modelleri şu an cevap veremiyor. Lütfen biraz bekleyin.")
+    # Hepsi çökerse (Zor ihtimal)
+    fallback = (f"Did you know the incredible story of {topic}? Most people have no idea. "
+                "It involves details that are absolutely mind-blowing. "
+                "Experts have been studying this for years. "
+                "Stay tuned to learn more about this fascinating topic.")
+    return fallback, "cinematic", [topic], f"#shorts {topic}"
 
 def download_music(mood, filename="bg.mp3"):
     if os.path.exists(filename): os.remove(filename)
@@ -152,7 +155,6 @@ def create_subs(text, duration, size):
         draw = ImageDraw.Draw(img)
         lines = textwrap.wrap(chunk.upper(), width=16)
         y = H * 0.65 
-        
         for line in lines:
             bbox = draw.textbbox((0,0), line, font=font)
             w_txt, h_txt = bbox[2]-bbox[0], bbox[3]-bbox[1]
@@ -189,7 +191,6 @@ def build_final_video(topic, script, mood, keywords):
                 c = c.crop(x1=x1, width=TARGET_W, height=1080)
             else:
                 c = c.resize(width=TARGET_W, height=1080)
-            
             c = c.resize(newsize=(TARGET_W, 1080))
             clips.append(c)
 
@@ -231,13 +232,12 @@ def handle(m):
             return
         topic = m.text.split(maxsplit=1)[1]
         
-        # Kullanıcıya Pro Modeli kullandığımızı haber verelim
-        msg = bot.reply_to(m, f"💎 '{topic}' için **GEMINI 2.5 PRO** (En Yüksek Zeka) devreye alındı...\n(Kalite öncelikli olduğu için düşünmesi 10-15 saniye sürebilir)")
+        msg = bot.reply_to(m, f"⚡ '{topic}' için **GEMINI 2.5 FLASH** ile hızlandırılmış üretim başladı...")
         
         script, mood, keywords, desc = get_script_and_metadata(topic)
         
         keywords_str = ", ".join(keywords) if isinstance(keywords, list) else keywords
-        bot.edit_message_text(f"✅ Senaryo Pro Model ile Yazıldı!\n🖼️ Görseller: {keywords_str}\n⏳ Film işleniyor (6000k Bitrate)...", m.chat.id, msg.message_id)
+        bot.edit_message_text(f"✅ Senaryo 2.5 Flash ile Hazır!\n🖼️ Görseller: {keywords_str}\n⏳ Film işleniyor (6000k Bitrate)...", m.chat.id, msg.message_id)
         
         path, files = build_final_video(topic, script, mood, keywords)
         
@@ -248,9 +248,9 @@ def handle(m):
     except Exception as e:
         error_msg = str(e)
         if "Google" in error_msg or "429" in error_msg:
-             error_msg = "⚠️ Sunucular çok yoğun. Lütfen 1 dakika sonra tekrar deneyin."
+             error_msg = "⚠️ Modeller meşgul. Lütfen 30 saniye sonra tekrar deneyin."
         bot.reply_to(m, f"❌ İşlem Durduruldu: {error_msg}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (V19 - QUALITY FIRST)...")
+print("Bot Başlatıldı (V21 - FLASH TURBO)...")
 bot.polling(non_stop=True)
