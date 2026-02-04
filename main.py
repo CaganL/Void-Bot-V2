@@ -41,15 +41,17 @@ def get_safe_font():
 
 def generate_tts(text, output="voice.mp3"):
     try:
-        # Ryan (UK) - Belgesel Tonu
+        # Ryan (UK) - Belgesel Sesi
         subprocess.run(["edge-tts", "--voice", "en-GB-RyanNeural", "--rate=-10%", "--pitch=-2Hz", "--text", text, "--write-media", output], check=True)
         return True
     except: return False
 
-# --- V28 SENARYO MOTORU (TEK VE SAĞLAM MODEL) ---
+# --- V29 SENARYO MOTORU (SENİN LİSTENE ÖZEL) ---
 def get_script_and_metadata(topic):
-    # SADECE 1.5-FLASH KULLANIYORUZ (En Yüksek Kota Limiti Bunda)
-    model = "models/gemini-1.5-flash"
+    # SENİN LİSTENDE OLAN MODELLER (Sırasıyla denenir)
+    # 1. Öncelik: gemini-2.0-flash (Listende var, hızlı)
+    # 2. Öncelik: gemini-flash-latest (Listende var, en güncel alias)
+    models = ["models/gemini-2.0-flash", "models/gemini-flash-latest"]
     
     prompt = (
         f"Act as a documentary filmmaker. Write a script about '{topic}'.\n"
@@ -61,37 +63,40 @@ def get_script_and_metadata(topic):
         "5. Output format: [Script text] KEYWORDS: [3 visual terms]"
     )
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={GEMINI_API_KEY}"
-    
-    try:
-        r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={GEMINI_API_KEY}"
+        print(f"Model deneniyor: {model}")
         
-        # Hata Analizi İçin Log
-        if r.status_code != 200:
-            raise Exception(f"Google Hatası: {r.status_code} - {r.text[:100]}")
+        try:
+            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
             
-        text = r.json()['candidates'][0]['content']['parts'][0]['text']
-        
-        # Basit Parsing (Hata yapmaması için)
-        if "KEYWORDS:" in text:
-            parts = text.split("KEYWORDS:")
-            script = parts[0].strip().replace("*", "").replace("#", "")
-            keywords = [k.strip() for k in parts[1].split(",")]
-        else:
-            # Format bozuksa bile metni kurtar
-            script = text.strip()
-            keywords = [topic, "cinematic", "documentary"]
+            if r.status_code == 200:
+                text = r.json()['candidates'][0]['content']['parts'][0]['text']
+                
+                # Basit Parsing
+                if "KEYWORDS:" in text:
+                    parts = text.split("KEYWORDS:")
+                    script = parts[0].strip().replace("*", "").replace("#", "")
+                    keywords = [k.strip() for k in parts[1].split(",")]
+                else:
+                    script = text.strip()
+                    keywords = [topic, "cinematic", "documentary"]
 
-        return script, keywords[:3]
-        
-    except Exception as e:
-        # Hata durumunda YEDEK METİN YOK, direkt hata fırlatıyoruz.
-        raise Exception(f"Senaryo yazılamadı: {str(e)}")
+                return script, keywords[:3]
+            else:
+                print(f"{model} Hata Kodu: {r.status_code}")
+                continue # Diğer modele geç
+
+        except Exception as e:
+            print(f"{model} Bağlantı Hatası: {e}")
+            continue
+
+    # Hiçbiri çalışmazsa HATA FIRLAT (Yedek metin yok)
+    raise Exception("Senin model listendeki yapay zekalara ulaşılamadı. API kotan dolmuş olabilir.")
 
 def get_stock_videos(keywords, duration):
     headers = {"Authorization": PEXELS_API_KEY}
     paths, curr_dur, i = [], 0, 0
-    # Aramayı genişletmek için ekstra terimler
     search_queries = keywords + ["cinematic atmosphere", "dark nature", "abstract background"]
     
     for q in search_queries:
@@ -105,7 +110,6 @@ def get_stock_videos(keywords, duration):
                 path = f"v{i}.mp4"
                 with open(path, "wb") as f: f.write(requests.get(link).content)
                 c = VideoFileClip(path)
-                # Çok kısa videoları atla
                 if c.duration > 3:
                     paths.append(path)
                     curr_dur += c.duration
@@ -187,7 +191,7 @@ def build_final_video(topic, script, keywords):
 def handle(m):
     try:
         topic = m.text.split(maxsplit=1)[1]
-        msg = bot.reply_to(m, f"🎬 '{topic}' için senaryo (V28 - Stabil Mod) hazırlanıyor...")
+        msg = bot.reply_to(m, f"🎬 '{topic}' için senaryo (V29 - Uyumlu Mod) hazırlanıyor...")
         script, keywords = get_script_and_metadata(topic)
         path, files = build_final_video(topic, script, keywords)
         with open(path, 'rb') as v: bot.send_video(m.chat.id, v)
@@ -197,5 +201,5 @@ def handle(m):
         bot.reply_to(m, f"❌ Hata: {str(e)}")
         cleanup_files(locals().get('files', []))
 
-print("Bot Başlatıldı (V28 - STABLE CORE)...")
+print("Bot Başlatıldı (V29 - COMPATIBILITY MODE)...")
 bot.polling(non_stop=True)
