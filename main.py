@@ -49,11 +49,16 @@ async def generate_tts(text, out="voice.mp3", voice="en-US-GuyNeural"):
     except Exception as e:
         print(f"TTS Hatası: {e}")
 
-# --- İÇERİK ÜRETİCİ (Retry Mekanizmalı) ---
+# --- İÇERİK ÜRETİCİ (Çoklu Model Desteği) ---
 def get_content(topic):
-    # Model 1.5-flash olarak güncellendi (Daha stabil)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
+    # Denenecek Modeller Listesi (Biri çalışmazsa diğerine geçer)
+    models_to_try = [
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash-001",
+        "gemini-pro"
+    ]
+
     prompt = (
         f"You are a professional YouTube Shorts creator. Create a viral scary story about '{topic}'. "
         "Output ONLY a valid JSON object with the following keys:\n"
@@ -65,13 +70,16 @@ def get_content(topic):
     )
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    
-    # 3 Kez Deneme Hakkı (Retry Logic)
-    for attempt in range(3):
+
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        print(f"🔄 Model deneniyor: {model}...")
+
         try:
             r = requests.post(url, json=payload, timeout=30)
             
             if r.status_code == 200:
+                print(f"✅ Başarılı: {model}")
                 data = r.json()
                 raw_text = data['candidates'][0]['content']['parts'][0]['text']
                 raw_text = raw_text.replace("```json", "").replace("```", "").strip()
@@ -79,20 +87,23 @@ def get_content(topic):
                 return result
             
             elif r.status_code == 429:
-                print(f"⚠️ Kota aşıldı (429). 20 saniye bekleniyor... (Deneme {attempt+1}/3)")
-                time.sleep(20) # 20 Saniye bekle
+                print(f"⚠️ Kota Dolu ({model}). Diğer modele geçiliyor...")
+                time.sleep(2)
+                continue # Diğer modele geç
+            
+            elif r.status_code == 404:
+                print(f"❌ Model Bulunamadı ({model}). Diğer modele geçiliyor...")
                 continue
             
             else:
-                print(f"Gemini API Hatası: {r.status_code} - {r.text}")
-                break
+                print(f"⚠️ Hata: {r.status_code} - {r.text}")
                 
         except Exception as e:
-            print(f"Bağlantı Hatası: {e}")
-            time.sleep(5)
+            print(f"Bağlantı Hatası ({model}): {e}")
+            time.sleep(1)
 
-    # Fallback (Eğer her şey başarısız olursa kullanılacak uzun hikaye)
-    print("❌ API başarısız oldu, yedek hikaye kullanılıyor.")
+    # Fallback (Hiçbir model çalışmazsa)
+    print("❌ Tüm modeller başarısız oldu, yedek hikaye kullanılıyor.")
     return {
         "script": "I looked at my phone screen in the dark room. It showed my face, illuminated by the blue light. But wait. In the reflection of my glasses, I saw something standing behind me. I froze. I didn't want to turn around. Slowly, I tilted the phone to see the corner of the room. It was empty. I sighed with relief and put the phone down. Then, a cold whisper touched my ear: You should have looked up.",
         "title": "Don't Look Up 😱",
@@ -157,7 +168,6 @@ def make_subtitles(text, duration):
         font = ImageFont.load_default()
 
     words = text.split()
-    # Kelimeleri daha sıkı grupla
     chunks = []
     temp = []
     for w in words:
@@ -198,7 +208,6 @@ def prepare_clip(path):
         c = VideoFileClip(path)
         c = c.without_audio()
         
-        # En boy oranı kontrolü
         if c.w / c.h > W / H:
             c = c.resize(height=H)
             c = c.crop(x_center=c.w/2, width=W, height=H)
@@ -261,7 +270,6 @@ def build_video(content_data):
         preset="ultrafast"
     )
 
-    # Temizlik
     for c in clips: c.close()
     audio.close()
     main.close()
@@ -281,13 +289,10 @@ def handle_video(message):
         return
 
     topic = args[1]
-    bot.reply_to(message, "🎬 Video hazırlanıyor (Bu işlem 1-2 dakika sürebilir)...")
+    bot.reply_to(message, "🎬 Video hazırlanıyor, lütfen bekle (1-2 dk)...")
 
     content = get_content(topic)
     
-    # Debug bilgisi (Loglara basar)
-    print(f"Seçilen Hikaye Uzunluğu: {len(content['script'])} karakter")
-
     path = build_video(content)
 
     if path and os.path.exists(path):
@@ -307,7 +312,7 @@ def handle_video(message):
         except Exception as e:
             bot.reply_to(message, f"Video gönderilemedi: {e}")
     else:
-        bot.reply_to(message, "❌ Video oluşturulamadı. API limitlerine takılmış olabilirsin.")
+        bot.reply_to(message, "❌ Video oluşturulamadı.")
 
 print("Bot aktif...")
 bot.polling(non_stop=True)
