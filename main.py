@@ -10,7 +10,7 @@ from moviepy.editor import (
     concatenate_videoclips
 )
 import asyncio
-import edge_tts  # Yeni TTS paketi
+import edge_tts  # Async TTS
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
