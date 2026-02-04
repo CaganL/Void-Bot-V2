@@ -4,12 +4,13 @@ import requests
 import random
 import numpy as np
 import textwrap
-from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip,
     concatenate_videoclips
 )
+import asyncio
+import edge_tts  # Yeni TTS paketi
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -33,10 +34,16 @@ def get_font():
                 f.write(r.content)
     return font_path
 
-# --- TTS ---
-def generate_tts(text, out="voice.mp3"):
-    tts = gTTS(text=text, lang="en")
-    tts.save(out)
+# --- TTS (edge-tts async) ---
+async def generate_tts(text, out="voice.mp3", voice="en-US-GuyNeural"):
+    communicate = edge_tts.Communicate(text, voice)
+    try:
+        await communicate.save(out)
+    except Exception as e:
+        print("TTS Hatası:", e)
+        # fallback: boş mp3
+        with open(out, "wb") as f:
+            f.write(b"")
 
 # --- SENARYO ---
 def get_script(topic):
@@ -136,28 +143,21 @@ def make_subtitles(text, duration):
 def prepare_clip(path):
     try:
         c = VideoFileClip(path)
-
-        # Oranı bozmadan büyüt
         c = c.resize(height=H, resample="lanczos")
-
         if c.w < W:
             c = c.resize(width=W, resample="lanczos")
-
-        # Ortadan kırp
         c = c.crop(x_center=c.w/2, y_center=c.h/2, width=W, height=H)
-
-        # Güvenlik: ölçüleri çift yap
         new_w = int(c.w) // 2 * 2
         new_h = int(c.h) // 2 * 2
         c = c.resize((new_w, new_h))
-
         return c
     except:
         return None
 
 # --- MONTAJ ---
 def build_video(script):
-    generate_tts(script, "voice.mp3")
+    # --- Async TTS Çağrısı ---
+    asyncio.run(generate_tts(script, "voice.mp3"))
     audio = AudioFileClip("voice.mp3")
 
     paths = get_videos(audio.duration)
