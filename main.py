@@ -31,15 +31,30 @@ kill_webhook()
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 1080, 1920
 
-# --- FONT ---
+# --- GÜNCELLENMİŞ FONT YÜKLEYİCİ (SORUN ÇÖZÜCÜ) ---
 def get_font():
     font_path = "Oswald-Bold.ttf"
+    
+    # Dosya var mı ve boyutu 1KB'dan büyük mü? (Bozuk dosya kontrolü)
+    if os.path.exists(font_path) and os.path.getsize(font_path) < 1000:
+        os.remove(font_path)
+        print("⚠️ Bozuk font dosyası silindi.")
+
     if not os.path.exists(font_path):
+        print("📥 Font indiriliyor...")
         try:
+            # 1. Kaynak: Oswald Bold
             url = "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald-Bold.ttf"
-            with open(font_path, "wb") as f:
-                f.write(requests.get(url, timeout=10).content)
-        except: pass
+            response = requests.get(url, timeout=15)
+            if response.status_code == 200:
+                with open(font_path, "wb") as f:
+                    f.write(response.content)
+                print("✅ Font başarıyla indirildi!")
+            else:
+                print("❌ Font indirilemedi, yedek deneniyor...")
+        except Exception as e:
+            print(f"⚠️ Font indirme hatası: {e}")
+            
     return font_path
 
 # --- AI İÇERİK ---
@@ -64,16 +79,16 @@ def get_content(topic):
                 text = r.json()['candidates'][0]['content']['parts'][0]['text']
                 data = json.loads(text.replace("```json", "").replace("```", "").strip())
                 if "visual_keywords" not in data: 
-                    data["visual_keywords"] = [topic, "cinematic", "4k"]
+                    data["visual_keywords"] = [topic, "luxury", "expensive"]
                 return data
         except: continue
 
     return {
-        "script": "Success is waiting for you.",
-        "hook": "WAKE UP NOW!",
-        "title": "Motivation Daily",
+        "script": "Time is money.",
+        "hook": "LOOK AT THIS!",
+        "title": "Luxury Life",
         "hashtags": "#shorts",
-        "visual_keywords": ["motivation"]
+        "visual_keywords": ["watch", "luxury"]
     }
 
 # --- MEDYA VE SES ---
@@ -82,7 +97,6 @@ async def generate_resources(content):
     hook = content.get("hook", "")
     keywords = content["visual_keywords"]
     
-    # Sesli Hook: Videonun başında bağırarak başlar
     full_script = f"{hook}! {script}"
     
     communicate = edge_tts.Communicate(full_script, "en-US-GuyNeural")
@@ -137,41 +151,56 @@ def smart_resize(clip):
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
     return clip
 
-# --- GÜNCELLENMİŞ HOOK GÖRSELİ (DEVASA BOYUT) ---
+# --- DEVASA HOOK GÖRSELİ (DÜZELTİLDİ) ---
 def create_hook_overlay(text, duration=3):
     img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # --- DEĞİŞİKLİK 1: Font Boyutunu 110'dan 220'ye çıkardık ---
-    font_size = 220 
+    # 1. Fontu Yüklemeyi Dene
+    font_path = get_font()
+    font_size = 250  # DEVASA BOYUT
+    
     try:
-        font = ImageFont.truetype(get_font(), font_size)
-    except:
+        if font_path and os.path.exists(font_path):
+            font = ImageFont.truetype(font_path, font_size)
+        else:
+            # Eğer font inmezse, varsayılan fontu kullan (Maalesef bu küçük kalır ama hata vermez)
+            print("⚠️ Özel font yüklenemedi, varsayılan kullanılıyor.")
+            font = ImageFont.load_default()
+    except Exception as e:
+        print(f"⚠️ Font hatası: {e}")
         font = ImageFont.load_default()
 
-    # --- DEĞİŞİKLİK 2: Satır genişliğini daralttık ki kelimeler alt alta blok olsun ---
-    # Width 12 yerine 8 yaptık, böylece ekrana daha büyük sığarlar.
+    # 2. Metni Parçala
     lines = textwrap.wrap(text.upper(), width=8)
     
-    # Yüksekliği hesapla
+    # Yükseklik Hesapla
     total_height = 0
     line_heights = []
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        h = bbox[3] - bbox[1]
+        try:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            h = bbox[3] - bbox[1]
+        except:
+            h = 50 # Hata durumunda varsayılan yükseklik
         line_heights.append(h)
-        total_height += h + 40 # Satır aralığını artırdık
+        total_height += h + 40
 
     y_text = (H - total_height) / 2
     
+    # 3. Yazıyı Çiz
     for i, line in enumerate(lines):
-        bbox = draw.textbbox((0, 0), line, font=font)
-        w = bbox[2] - bbox[0]
-        x_text = (W - w) / 2
-        
-        # --- DEĞİŞİKLİK 3: Siyah Kenarlığı (Stroke) 10'dan 20'ye çıkardık ---
-        # Yazı artık arkaplan ne olursa olsun okunacak.
-        draw.text((x_text, y_text), line, font=font, fill="white", stroke_width=20, stroke_fill="black")
+        try:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            w = bbox[2] - bbox[0]
+            x_text = (W - w) / 2
+            
+            # Siyah Kenarlık (Stroke)
+            draw.text((x_text, y_text), line, font=font, fill="white", stroke_width=25, stroke_fill="black")
+        except:
+            # Fallback (Eski pillow sürümü için stroke desteklemezse)
+            draw.text((100, y_text), line, font=font, fill="white")
+            
         y_text += line_heights[i] + 40
 
     img_np = np.array(img)
@@ -230,7 +259,7 @@ def handle_video(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "motivation"
         
-        bot.reply_to(message, f"🎥 Konu: **{topic}**\n💥 DEV HOOK Yazısı Hazırlanıyor...")
+        bot.reply_to(message, f"🎥 Konu: **{topic}**\n💥 Yazı boyutu düzeltiliyor...")
         
         content = get_content(topic)
         path = build_video(content)
@@ -255,3 +284,4 @@ def handle_video(message):
 
 print("🤖 Bot Başlatıldı!")
 bot.polling(non_stop=True)
+
