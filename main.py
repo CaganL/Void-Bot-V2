@@ -76,15 +76,13 @@ def get_content(topic):
         "visual_keywords": ["motivation"]
     }
 
-# --- MEDYA VE SES (GÜNCELLENDİ) ---
+# --- MEDYA VE SES ---
 async def generate_resources(content):
     script = content["script"]
     hook = content.get("hook", "")
     keywords = content["visual_keywords"]
     
-    # 🔥 İŞTE SİHİRLİ DOKUNUŞ BURADA:
-    # Hook yazısını, konuşma metninin en başına ekliyoruz.
-    # Böylece video "BAŞARISIZ OLMA!" diye bağırarak başlıyor.
+    # Sesli Hook: Videonun başında bağırarak başlar
     full_script = f"{hook}! {script}"
     
     communicate = edge_tts.Communicate(full_script, "en-US-GuyNeural")
@@ -139,20 +137,21 @@ def smart_resize(clip):
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
     return clip
 
-# --- HOOK GÖRSELİ ---
+# --- GÜNCELLENMİŞ HOOK GÖRSELİ (DEVASA BOYUT) ---
 def create_hook_overlay(text, duration=3):
     img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # Font boyutu
-    font_size = 110 
+    # --- DEĞİŞİKLİK 1: Font Boyutunu 110'dan 220'ye çıkardık ---
+    font_size = 220 
     try:
         font = ImageFont.truetype(get_font(), font_size)
     except:
         font = ImageFont.load_default()
 
-    # Metni sığdır
-    lines = textwrap.wrap(text.upper(), width=12)
+    # --- DEĞİŞİKLİK 2: Satır genişliğini daralttık ki kelimeler alt alta blok olsun ---
+    # Width 12 yerine 8 yaptık, böylece ekrana daha büyük sığarlar.
+    lines = textwrap.wrap(text.upper(), width=8)
     
     # Yüksekliği hesapla
     total_height = 0
@@ -161,22 +160,19 @@ def create_hook_overlay(text, duration=3):
         bbox = draw.textbbox((0, 0), line, font=font)
         h = bbox[3] - bbox[1]
         line_heights.append(h)
-        total_height += h + 30 
+        total_height += h + 40 # Satır aralığını artırdık
 
     y_text = (H - total_height) / 2
-    
-    # Kırmızı arkaplan efekti (Vurgu için)
-    # Metnin arkasına hafif bir gölge/kutu ekleyelim ki her videoda okunsun
-    box_padding = 20
     
     for i, line in enumerate(lines):
         bbox = draw.textbbox((0, 0), line, font=font)
         w = bbox[2] - bbox[0]
         x_text = (W - w) / 2
         
-        # Metin
-        draw.text((x_text, y_text), line, font=font, fill="white", stroke_width=10, stroke_fill="black")
-        y_text += line_heights[i] + 30
+        # --- DEĞİŞİKLİK 3: Siyah Kenarlığı (Stroke) 10'dan 20'ye çıkardık ---
+        # Yazı artık arkaplan ne olursa olsun okunacak.
+        draw.text((x_text, y_text), line, font=font, fill="white", stroke_width=20, stroke_fill="black")
+        y_text += line_heights[i] + 40
 
     img_np = np.array(img)
     txt_clip = ImageClip(img_np).set_duration(duration)
@@ -204,9 +200,9 @@ def build_video(content):
         if main_clip.duration > audio.duration:
             main_clip = main_clip.subclip(0, audio.duration)
         
-        # Hook Görseli Ekle
+        # Hook Görseli
         hook_text = content.get("hook", content["title"])
-        hook_overlay = create_hook_overlay(hook_text, duration=3.0) # İlk 3 saniye
+        hook_overlay = create_hook_overlay(hook_text, duration=3.0) 
         
         final_video = CompositeVideoClip([main_clip, hook_overlay.set_start(0)])
 
@@ -234,7 +230,7 @@ def handle_video(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "motivation"
         
-        bot.reply_to(message, f"🎥 Konu: **{topic}**\n🔊 Hem Sesli Hem Görsel Hook Hazırlanıyor...")
+        bot.reply_to(message, f"🎥 Konu: **{topic}**\n💥 DEV HOOK Yazısı Hazırlanıyor...")
         
         content = get_content(topic)
         path = build_video(content)
@@ -257,6 +253,5 @@ def handle_video(message):
     except Exception as e:
         bot.reply_to(message, f"Hata: {e}")
 
-print("🤖 Tam Donanımlı Bot Başlatıldı!")
+print("🤖 Bot Başlatıldı!")
 bot.polling(non_stop=True)
-
