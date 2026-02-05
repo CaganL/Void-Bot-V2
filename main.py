@@ -66,21 +66,20 @@ def get_content(topic):
         "visual_keywords": ["watch", "luxury"]
     }
 
-# --- MEDYA VE SES (GÜNCELLENDİ: DAHA İNSANSI SES) ---
+# --- MEDYA VE SES (GÜNCELLENDİ: %8 İDEAL HIZ) ---
 async def generate_resources(content):
     script = content["script"]
     hook = content.get("hook", "")
     keywords = content["visual_keywords"]
     
-    # Sesli Hook hala var (Video bağırarak başlar)
     full_script = f"{hook}! {script}"
     
-    # --- YENİ SES DÜZENLEMESİ ---
-    # 1. Metin Temizliği: Noktaları virgüle çevirerek robotik duraksamaları azaltıyoruz.
+    # --- SES DÜZENLEMESİ ---
+    # Noktaları virgüle çevirerek robotik duraksamaları hala engelliyoruz.
     smooth_script = full_script.replace(". ", ", ").replace("\n", " ")
     
-    # 2. Ses ve Hız: Daha akıcı 'Ava' sesini kullanıyor ve hızı %15 artırıyoruz.
-    communicate = edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+15%")
+    # Hız %+15'ten %+8'e düşürüldü. Daha doğal ve sindirilebilir bir tempo.
+    communicate = edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+8%")
     # ---------------------------
     
     await communicate.save("voice.mp3")
@@ -156,7 +155,6 @@ def build_video(content):
         if main_clip.duration > audio.duration:
             main_clip = main_clip.subclip(0, audio.duration)
         
-        # Overlay yok, temiz video
         final_video = main_clip 
 
         out = "final.mp4"
@@ -183,7 +181,7 @@ def handle_video(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "motivation"
         
-        bot.reply_to(message, f"🎥 Konu: **{topic}**\n⚡ Gelişmiş akıcı ses ile hazırlanıyor...")
+        bot.reply_to(message, f"🎥 Konu: **{topic}**\n⚖️ Dengeli ve akıcı ses ile hazırlanıyor...")
         
         content = get_content(topic)
         path = build_video(content)
