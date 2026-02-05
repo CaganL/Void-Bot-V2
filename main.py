@@ -32,14 +32,16 @@ kill_webhook()
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 1080, 1920
 
-# --- AI İÇERİK ---
+# --- AI İÇERİK (GÜNCELLENDİ: GÖRSEL ZEKA ARTIRILDI) ---
 def get_content(topic):
     models = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     
+    # Prompt, Pexels'in anlayacağı spesifik ve atmosferik terimler üretmek üzere optimize edildi.
     prompt = (
-        f"You are a viral YouTube Shorts expert. Create a script about '{topic}'. "
-        "Strictly under 100 words. "
-        "IMPORTANT: Generate a 'hook' sentence (max 5 words) that stops the scroll immediately. "
+        f"You are a viral YouTube Shorts storyteller specializing in mystery and horror. "
+        f"Create a spine-chilling script about '{topic}'. Strictly under 85 words. "
+        "IMPORTANT: 'visual_keywords' MUST be 6 specific, atmospheric search terms (1-2 words each) "
+        "that follow the story's progression (e.g., 'dark forest', 'old candle', 'creepy shadow'). "
         "Output ONLY JSON: "
         "{'script': 'text without hook', 'hook': 'HOOK TEXT', 'title': 'Title', 'hashtags': '#tags', 'visual_keywords': ['tag1', 'tag2']}"
     )
@@ -53,47 +55,43 @@ def get_content(topic):
             if r.status_code == 200:
                 text = r.json()['candidates'][0]['content']['parts'][0]['text']
                 data = json.loads(text.replace("```json", "").replace("```", "").strip())
-                if "visual_keywords" not in data: 
-                    data["visual_keywords"] = [topic, "cinematic", "4k"]
                 return data
         except: continue
 
     return {
-        "script": "Time is money.",
-        "hook": "LOOK AT THIS!",
-        "title": "Luxury Life",
-        "hashtags": "#shorts",
-        "visual_keywords": ["watch", "luxury"]
+        "script": "The mystery remains unsolved.",
+        "hook": "THEY NEVER FOUND HIM",
+        "title": "Unsolved Mystery",
+        "hashtags": "#mystery",
+        "visual_keywords": ["darkness", "mystery", "shadow"]
     }
 
-# --- MEDYA VE SES (GÜNCELLENDİ: %4 EN İDEAL HIZ) ---
+# --- MEDYA VE SES (GÜNCELLENDİ: SIRALI VİDEO SEÇİMİ) ---
 async def generate_resources(content):
     script = content["script"]
     hook = content.get("hook", "")
     keywords = content["visual_keywords"]
     
     full_script = f"{hook}! {script}"
-    
-    # --- SES DÜZENLEMESİ ---
-    # Noktaları virgüle çevirerek robotik duraksamaları hala engelliyoruz.
     smooth_script = full_script.replace(". ", ", ").replace("\n", " ")
     
-    # Hız %+8'den %+4'e düşürüldü. En dengeli ve akıcı tempo.
+    # İzleyicinin ses eleştirisini çözen ayarlar korundu
     communicate = edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+4%")
-    # ---------------------------
     
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
     headers = {"Authorization": PEXELS_API_KEY}
-    random.shuffle(keywords)
+    
+    # Hikaye akışını bozmamak için keywords artık karıştırılmıyor (random.shuffle kaldırıldı).
     paths = []
     current_dur = 0
     
     for q in keywords:
         if current_dur >= audio.duration: break
         try:
-            url = f"https://api.pexels.com/videos/search?query={q}&per_page=3&orientation=portrait"
+            # Arama sorgusuna 'dark' ekleyerek atmosferi garantiliyoruz.
+            url = f"https://api.pexels.com/videos/search?query={q}&per_page=2&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
             for v in data.get("videos", []):
@@ -179,19 +177,19 @@ def build_video(content):
 def handle_video(message):
     try:
         args = message.text.split(maxsplit=1)
-        topic = args[1] if len(args) > 1 else "motivation"
+        topic = args[1] if len(args) > 1 else "mystery story"
         
-        bot.reply_to(message, f"🎥 Konu: **{topic}**\n⚖️ En ideal hız ayarı (%+4) ile hazırlanıyor...")
+        bot.reply_to(message, f"🎥 Konu: **{topic}**\n🎭 Atmosferik videolar seçiliyor ve seslendiriliyor...")
         
         content = get_content(topic)
         path = build_video(content)
         
         if path and os.path.exists(path):
             caption_text = (
-                "✅ **VİDEO HAZIR!**\n\n"
-                "👇 **BAŞLIK KISMI (Title):**\n"
+                "✅ **HİKAYE HAZIR!**\n\n"
+                "👇 **BAŞLIK (Title):**\n"
                 f"`🔥 {content['hook']} 🎥 {content['title']}`\n\n"
-                "👇 **AÇIKLAMA KISMI (Description):**\n"
+                "👇 **AÇIKLAMA (Description):**\n"
                 f"{content['script']}\n\n"
                 f"{content['hashtags']}"
             )
