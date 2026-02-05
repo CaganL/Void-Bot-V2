@@ -66,7 +66,7 @@ def get_content(topic):
         "visual_keywords": ["watch", "luxury"]
     }
 
-# --- MEDYA VE SES (GÜNCELLENDİ: %8 İDEAL HIZ) ---
+# --- MEDYA VE SES (GÜNCELLENDİ: %4 EN İDEAL HIZ) ---
 async def generate_resources(content):
     script = content["script"]
     hook = content.get("hook", "")
@@ -78,8 +78,8 @@ async def generate_resources(content):
     # Noktaları virgüle çevirerek robotik duraksamaları hala engelliyoruz.
     smooth_script = full_script.replace(". ", ", ").replace("\n", " ")
     
-    # Hız %+15'ten %+8'e düşürüldü. Daha doğal ve sindirilebilir bir tempo.
-    communicate = edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+8%")
+    # Hız %+8'den %+4'e düşürüldü. En dengeli ve akıcı tempo.
+    communicate = edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+4%")
     # ---------------------------
     
     await communicate.save("voice.mp3")
@@ -181,7 +181,7 @@ def handle_video(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "motivation"
         
-        bot.reply_to(message, f"🎥 Konu: **{topic}**\n⚖️ Dengeli ve akıcı ses ile hazırlanıyor...")
+        bot.reply_to(message, f"🎥 Konu: **{topic}**\n⚖️ En ideal hız ayarı (%+4) ile hazırlanıyor...")
         
         content = get_content(topic)
         path = build_video(content)
