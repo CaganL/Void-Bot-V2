@@ -32,14 +32,14 @@ kill_webhook()
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 1080, 1920
 
-# --- AI İÇERİK (GÜNCELLENDİ: GÖRSEL ZEKA ARTIRILDI) ---
+# --- AI İÇERİK (GÜNCELLENDİ: SÜRE 30-45 SN İÇİN KELİME SAYISI ARTIRILDI) ---
 def get_content(topic):
     models = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     
-    # Prompt, Pexels'in anlayacağı spesifik ve atmosferik terimler üretmek üzere optimize edildi.
+    # Videonun 30-45 saniye sürmesi için kelime sayısı 100-115 arasına çekildi.
     prompt = (
         f"You are a viral YouTube Shorts storyteller specializing in mystery and horror. "
-        f"Create a spine-chilling script about '{topic}'. Strictly under 85 words. "
+        f"Create a spine-chilling script about '{topic}'. Strictly between 100 and 115 words. "
         "IMPORTANT: 'visual_keywords' MUST be 6 specific, atmospheric search terms (1-2 words each) "
         "that follow the story's progression (e.g., 'dark forest', 'old candle', 'creepy shadow'). "
         "Output ONLY JSON: "
@@ -59,14 +59,14 @@ def get_content(topic):
         except: continue
 
     return {
-        "script": "The mystery remains unsolved.",
+        "script": "The mystery remains unsolved, hidden deep within the shadows of time where no light can reach it. People talk in whispers about the events that transpired, but no one dares to speak the truth aloud.",
         "hook": "THEY NEVER FOUND HIM",
         "title": "Unsolved Mystery",
         "hashtags": "#mystery",
         "visual_keywords": ["darkness", "mystery", "shadow"]
     }
 
-# --- MEDYA VE SES (GÜNCELLENDİ: SIRALI VİDEO SEÇİMİ) ---
+# --- MEDYA VE SES ---
 async def generate_resources(content):
     script = content["script"]
     hook = content.get("hook", "")
@@ -75,7 +75,6 @@ async def generate_resources(content):
     full_script = f"{hook}! {script}"
     smooth_script = full_script.replace(". ", ", ").replace("\n", " ")
     
-    # İzleyicinin ses eleştirisini çözen ayarlar korundu
     communicate = edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+4%")
     
     await communicate.save("voice.mp3")
@@ -83,14 +82,12 @@ async def generate_resources(content):
     
     headers = {"Authorization": PEXELS_API_KEY}
     
-    # Hikaye akışını bozmamak için keywords artık karıştırılmıyor (random.shuffle kaldırıldı).
     paths = []
     current_dur = 0
     
     for q in keywords:
         if current_dur >= audio.duration: break
         try:
-            # Arama sorgusuna 'dark' ekleyerek atmosferi garantiliyoruz.
             url = f"https://api.pexels.com/videos/search?query={q}&per_page=2&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
