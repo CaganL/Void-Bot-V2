@@ -20,7 +20,6 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY")
 
-# --- TEMİZLİK ---
 def kill_webhook():
     if not TELEGRAM_TOKEN: return
     try:
@@ -28,7 +27,6 @@ def kill_webhook():
     except: pass
 
 kill_webhook()
-
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 1080, 1920
 
@@ -42,10 +40,10 @@ def get_pixabay_music(query):
             path = "bg_music.mp3"
             with open(path, "wb") as f:
                 f.write(requests.get(music_url, timeout=15).content)
-            print(f"✅ Pixabay'den müzik indirildi: {query}")
+            print(f"📡 Pixabay: '{query}' için müzik başarıyla indirildi.")
             return path
     except Exception as e:
-        print(f"❌ Pixabay Müzik Hatası: {e}")
+        print(f"❌ Pixabay Hatası: {e}")
         return None
     return None
 
@@ -54,10 +52,9 @@ def get_content(topic):
     models = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     prompt = (
         f"You are a viral YouTube Shorts storyteller. Create a script about '{topic}'. "
-        "Strictly under 90 words. "
-        "IMPORTANT: Provide a 'music_keyword' for Pixabay (e.g., 'suspense', 'horror', 'luxury'). "
+        "Strictly under 90 words. Provide a 'music_keyword' for Pixabay search. "
         "Output ONLY JSON: "
-        "{'script': 'text', 'hook': 'HOOK', 'title': 'Title', 'hashtags': '#tags', 'music_keyword': 'keyword', 'visual_keywords': ['tag1', 'tag2']}"
+        "{'script': 'text', 'hook': 'HOOK', 'title': 'Title', 'hashtags': '#tags', 'music_keyword': 'dark suspense', 'visual_keywords': ['tag1', 'tag2']}"
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     for model in models:
@@ -66,8 +63,7 @@ def get_content(topic):
             r = requests.post(url, json=payload, timeout=20)
             if r.status_code == 200:
                 text = r.json()['candidates'][0]['content']['parts'][0]['text']
-                data = json.loads(text.replace("```json", "").replace("```", "").strip())
-                return data
+                return json.loads(text.replace("```json", "").replace("```", "").strip())
         except: continue
     return None
 
@@ -78,29 +74,29 @@ async def generate_resources(content):
     keywords = content["visual_keywords"]
     m_keyword = content.get("music_keyword", "mystery")
     
+    # Ava Sesi + %4 Hız Ayarı
     full_script = f"{hook}! {script}"
     smooth_script = full_script.replace(". ", ", ").replace("\n", " ")
     
-    # Ava Sesi + %4 Hız Ayarı
-    communicate = edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+4%")
-    await communicate.save("voice.mp3")
+    await edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+4%").save("voice.mp3")
     voice_audio = AudioFileClip("voice.mp3")
     
-    # --- GÜNCELLENMİŞ MÜZİK MİKSERİ ---
+    # --- GÜÇLENDİRİLMİŞ MÜZİK MİKSERİ ---
     music_file = get_pixabay_music(m_keyword)
     if music_file:
         try:
-            # Müzik sesi %25 seviyesine çıkarıldı (0.25)
-            bg_music = AudioFileClip(music_file).fx(volumex, 0.25).set_duration(voice_audio.duration)
+            # Ses seviyesini %40 yaptık (0.40) - Artık duyulmaması imkansız!
+            bg_music = AudioFileClip(music_file).fx(volumex, 0.40).set_duration(voice_audio.duration)
+            # CompositeAudioClip ile iki sesi birleştiriyoruz
             final_audio = CompositeAudioClip([voice_audio, bg_music])
-            print("🎵 Fon müziği seslendirmeye başarıyla mikslendi.")
+            print("🔊 Müzik ve Ses %40 dengesiyle başarıyla birleştirildi.")
         except Exception as e:
-            print(f"⚠️ Miksaj hatası: {e}")
+            print(f"⚠️ Ses birleştirme hatası: {e}")
             final_audio = voice_audio
     else:
-        print("⚠️ Müzik bulunamadı veya indirilemedi, sadece ses kullanılıyor.")
         final_audio = voice_audio
     
+    # Video Klipleri
     headers = {"Authorization": PEXELS_API_KEY}
     paths = []
     current_dur = 0
@@ -115,13 +111,11 @@ async def generate_resources(content):
                 path = f"clip_{len(paths)}.mp4"
                 with open(path, "wb") as f:
                     f.write(requests.get(link, timeout=15).content)
-                try:
-                    c = VideoFileClip(path)
-                    if c.duration > 2:
-                        paths.append(path)
-                        current_dur += c.duration
-                    c.close()
-                except: pass
+                c = VideoFileClip(path)
+                if c.duration > 2:
+                    paths.append(path)
+                    current_dur += c.duration
+                c.close()
         except: continue
         
     return paths, final_audio, music_file
@@ -134,7 +128,7 @@ def smart_resize(clip):
         clip = clip.resize(width=W).crop(y1=clip.h/2 - H/2, width=W, height=H)
     return clip
 
-# --- MONTAJ (4500K KALİTE KORUNDU) ---
+# --- MONTAJ (4500K KALİTE) ---
 def build_video(content):
     music_file = None
     try:
@@ -148,18 +142,19 @@ def build_video(content):
             main_clip = main_clip.subclip(0, final_audio.duration)
         
         out = "final.mp4"
-        
-        # 4500k ve medium preset dengesi
+        # 4500k + Medium Preset Ayarı
         main_clip.write_videofile(
             out, fps=24, codec="libx264", preset="medium",
             bitrate="4500k", audio_bitrate="128k", threads=4, logger=None
         )
         
+        # Temizlik
         final_audio.close()
         for c in clips: c.close()
         for p in paths: 
             if os.path.exists(p): os.remove(p)
         if music_file and os.path.exists(music_file): os.remove(music_file)
+            
         return out
     except Exception as e:
         print(f"Hata: {e}")
@@ -170,21 +165,17 @@ def build_video(content):
 @bot.message_handler(commands=["video"])
 def handle_video(message):
     try:
-        args = message.text.split(maxsplit=1)
-        topic = args[1] if len(args) > 1 else "mystery"
-        bot.reply_to(message, f"🎥 **{topic}** için müzikli ve 4500k kaliteli video hazırlanıyor...")
-        
+        topic = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else "mystery"
+        bot.reply_to(message, f"🎥 **{topic}** için sesli ve müzikli video üretiliyor...")
         content = get_content(topic)
         path = build_video(content)
-        
         if path:
-            caption = f"🔥 {content['hook']}\n\n{content['script']}\n\n{content['hashtags']}"
             with open(path, "rb") as v:
-                bot.send_video(message.chat.id, v, caption=caption[:1000], parse_mode="Markdown")
+                bot.send_video(message.chat.id, v, caption=f"🔥 {content['hook']}\n\n{content['script']}")
         else:
-            bot.reply_to(message, "❌ Müzik veya video oluşturma sırasında bir hata oldu.")
+            bot.reply_to(message, "❌ Video üretiminde teknik bir sorun oluştu.")
     except Exception as e:
         bot.reply_to(message, f"Hata: {e}")
 
-print("🤖 Bot Başlatıldı!")
+print("🤖 Bot Müzik Mikseri Güncellemesiyle Başlatıldı!")
 bot.polling(non_stop=True)
