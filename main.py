@@ -18,7 +18,7 @@ import edge_tts
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY") # Pixabay Key eklendi
+PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY")
 
 # --- TEMİZLİK ---
 def kill_webhook():
@@ -38,7 +38,6 @@ def get_pixabay_music(query):
         url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={query}&media_type=music"
         r = requests.get(url, timeout=10).json()
         if r.get("hits"):
-            # En iyi sonuçlardan rastgele birini seç
             music_url = random.choice(r["hits"])["preview"]
             path = "bg_music.mp3"
             with open(path, "wb") as f:
@@ -49,20 +48,20 @@ def get_pixabay_music(query):
         return None
     return None
 
-# --- AI İÇERİK ---
+# --- AI İÇERİK (GÜNCELLENDİ: HİKAYE AKIŞI VE MÜZİK ODAKLI) ---
 def get_content(topic):
     models = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
     
     prompt = (
-        f"You are a viral YouTube Shorts expert. Create a script about '{topic}'. "
-        "Strictly under 100 words. "
-        "IMPORTANT: Provide a 'music_keyword' for Pixabay music search (e.g., 'dark', 'cinematic', 'creepy'). "
+        f"You are a viral YouTube Shorts storyteller. Create a spine-chilling mystery script about '{topic}'. "
+        "Strictly under 85 words. "
+        "IMPORTANT: Provide a 'music_keyword' for Pixabay (e.g., 'dark', 'eerie', 'luxury'). "
+        "Visual_keywords MUST follow the story progression. "
         "Output ONLY JSON: "
         "{'script': 'text', 'hook': 'HOOK', 'title': 'Title', 'hashtags': '#tags', 'music_keyword': 'keyword', 'visual_keywords': ['tag1', 'tag2']}"
     )
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
     for model in models:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
@@ -84,27 +83,27 @@ async def generate_resources(content):
     full_script = f"{hook}! {script}"
     smooth_script = full_script.replace(". ", ", ").replace("\n", " ")
     
-    # AI Seslendirme
+    # %4 hız ve Ava sesi
     communicate = edge_tts.Communicate(smooth_script, "en-US-AvaNeural", rate="+4%")
     await communicate.save("voice.mp3")
     voice_audio = AudioFileClip("voice.mp3")
     
-    # --- DİNAMİK MÜZİK EKLEME ---
+    # Dinamik Müzik
     music_file = get_pixabay_music(m_keyword)
     if music_file:
         try:
-            bg_music = AudioFileClip(music_file).fx(volumex, 0.10).set_duration(voice_audio.duration)
+            bg_music = AudioFileClip(music_file).fx(volumex, 0.12).set_duration(voice_audio.duration)
             final_audio = CompositeAudioClip([voice_audio, bg_music])
         except:
             final_audio = voice_audio
     else:
         final_audio = voice_audio
     
-    # Video Kliplerini Toplama
     headers = {"Authorization": PEXELS_API_KEY}
     paths = []
     current_dur = 0
     
+    # Hikaye akışını korumak için shuffle kaldırıldı
     for q in keywords:
         if current_dur >= voice_audio.duration: break
         try:
@@ -127,17 +126,15 @@ async def generate_resources(content):
         
     return paths, final_audio, music_file
 
-# --- AKILLI KIRPMA ---
 def smart_resize(clip):
     target_ratio = W / H
-    clip_ratio = clip.w / clip.h
-    if clip_ratio > target_ratio:
+    if (clip.w / clip.h) > target_ratio:
         clip = clip.resize(height=H).crop(x1=clip.w/2 - W/2, width=W, height=H)
     else:
         clip = clip.resize(width=W).crop(y1=clip.h/2 - H/2, width=W, height=H)
     return clip
 
-# --- MONTAJ ---
+# --- MONTAJ (GÜNCELLENDİ: 50MB SINIRI İÇİN OPTİMİZE EDİLDİ) ---
 def build_video(content):
     music_file = None
     try:
@@ -151,7 +148,18 @@ def build_video(content):
             main_clip = main_clip.subclip(0, final_audio.duration)
         
         out = "final.mp4"
-        main_clip.write_videofile(out, fps=24, codec="libx264", preset="ultrafast", logger=None)
+        
+        # 25-40sn arası videolar için cam gibi kalite ve düşük dosya boyutu
+        main_clip.write_videofile(
+            out, 
+            fps=24, 
+            codec="libx264", 
+            preset="medium",   # En iyi sıkıştırma dengesi
+            bitrate="4500k",   # Kaliteyi zirvede, boyutu 50MB altında tutar
+            audio_bitrate="128k", 
+            threads=4, 
+            logger=None
+        )
         
         final_audio.close()
         for c in clips: c.close()
@@ -171,7 +179,7 @@ def handle_video(message):
     try:
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "mystery"
-        bot.reply_to(message, f"🎥 **{topic}** için atmosferik müzik ve video hazırlanıyor...")
+        bot.reply_to(message, f"🎥 **{topic}** için atmosferik video ve dinamik müzik hazırlanıyor...")
         
         content = get_content(topic)
         path = build_video(content)
@@ -185,5 +193,5 @@ def handle_video(message):
     except Exception as e:
         bot.reply_to(message, f"Hata: {e}")
 
-print("🤖 Bot Müzik Desteğiyle Başlatıldı!")
+print("🤖 Bot Müzik ve Kalite Güncellemesiyle Başlatıldı!")
 bot.polling(non_stop=True)
