@@ -19,7 +19,7 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 720, 1280
 
 # --- SABİT ETİKETLER ---
-FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #scarystories #urbanlegends #creepypasta #viral #fyp #plottwist"
+FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #scarystories #urbanlegends #creepypasta #viral #fyp #doppelganger"
 
 # --- TEMİZLİK ---
 def clean_start():
@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V18: PLOT TWIST ENGINE) ---
+# --- AI İÇERİK (V19: SOMUTLUK & GÖRSEL TWIST) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -38,20 +38,20 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT DEVRİMİ: TWIST ODAKLI
-    # Hook: Somut bir anomali.
-    # Ending: "Double Twist" (Beklenmedik yön değişimi).
+    # PROMPT DEVRİMİ:
+    # 1. Hook: "NO POETRY". Şiir yasak. Sadece somut olay.
+    # 2. Twist: "VISUAL CONFIRMATION". "It's me" demek yasak. "Kendi yüzümü gördüm" demek zorunlu.
+    # 3. Fluff: "No atmospheric filler". Duvarlar nefes almasın, olay olsun.
     prompt = (
-        f"You are a master of horror plot twists. Write a script about '{topic}'. "
+        f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. Something is WRONG.) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (60-70 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
-        "CRITICAL RULES FOR 9/10 TWIST:\n"
-        "1. THE TWIST: The ending must NOT be a jump scare. It must be a REALIZATION. (e.g. Instead of 'It bit me', write 'I realized I was the one holding the knife').\n"
-        "2. HOOK: Start with a specific, disturbing detail. (e.g. 'My dog barked at the empty corner').\n"
-        "3. STYLE: Ultra-concise. Drop articles. Simple English (A2).\n"
-        "4. POV: First person ('I'). No visual notes.\n"
-        "5. PACING: Build tension -> False safety -> HORRIFYING REALIZATION.\n"
-        "6. LENGTH: 60-70 words."
+        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. NO METAPHORS. Use: I hear/see/feel.) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "CRITICAL RULES FOR 9/10 SCORE:\n"
+        "1. HOOK: Concrete & Scary. Bad: 'Silence screams'. Good: 'I hear footsteps inside'.\n"
+        "2. NO FLUFF: Do not describe walls breathing or floorboards groaning. Focus on the THREAT.\n"
+        "3. THE TWIST (ENDING): Must be VISUAL. Do not just say 'It was me'. Say 'I saw my own face', 'It had my eyes', 'My reflection smiled'.\n"
+        "4. LENGTH: STRICTLY 50-60 words. (Target 28s).\n"
+        "5. STYLE: Short sentences. Drop articles."
     )
     
     payload = {
@@ -95,8 +95,8 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # SES AYARI: -5% Hız (Anlaşılır ve gergin)
-    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
+    # Ses: +0% (Normal) ve -5Hz (Korku)
+    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+0%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -111,8 +111,8 @@ async def generate_resources(content):
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            # GÖRSEL ARAMA: Atmosferik ve detaylı
-            query_enhanced = f"{q} horror scary dark cinematic pov shadow slow motion"
+            # GÖRSEL ARAMA: "Doppelganger", "Face", "Mirror" odaklı
+            query_enhanced = f"{q} horror scary dark cinematic pov face reflection"
             url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=5&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
@@ -145,7 +145,7 @@ async def generate_resources(content):
         
     return paths, audio
 
-# --- GÖRSEL EFEKTLER (SABİT & SAKİN - V17 İLE AYNI) ---
+# --- GÖRSEL EFEKTLER (V17 İLE AYNI - SAĞLAM) ---
 def cold_horror_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
@@ -167,7 +167,7 @@ def apply_processing(clip, duration):
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
 
-    # TEK EFEKT KURALI (Kaos Yok)
+    # TEK EFEKT KURALI
     effect_type = random.choice(["zoom", "speed", "mirror", "none"])
     
     if effect_type == "speed":
@@ -208,7 +208,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_twist_v18.mp4"
+        out = "horror_visual_shock_v19.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -227,7 +227,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nPlot Twist Modu (Akıl Oyunları)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nGörsel Şok Modu (V19)...")
         
         content = get_content(topic)
         
@@ -235,7 +235,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n🤯 Twist Senaryosu Yazıldı.\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 {content['title']}\n👁️ Hook: Somut | Twist: Görsel\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
