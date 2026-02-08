@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V25: SLOW BURN - AZ KELİME, YAVAŞ SES) ---
+# --- AI İÇERİK (V27: 65-70 KELİME & DENGE) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -38,21 +38,22 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT DEVRİMİ:
-    # 1. Length: 60-70 Kelime. (Ses yavaşladığı için kelimeyi azalttık).
-    # 2. Pacing: "DELIBERATE". Acelesi yok. Tane tane.
-    # 3. Style: Kısa, vurucu cümleler. Nokta kullanımı serbest.
+    # PROMPT AYARI:
+    # 1. Kelime: 65-70 (Senin istediğin ideal aralık).
+    # 2. Yapı: Giriş -> Gerilim (Bridge) -> Şok (Climax).
+    # 3. Stil: Akıcı ama kısa cümleler.
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (60-70 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
-        "CRITICAL RULES FOR ATMOSPHERE:\n"
-        "1. LENGTH: STRICTLY 60-70 words. We are slowing down the voice, so fewer words are needed for 28s.\n"
-        "2. PACING: Write for a SLOW, CREEPY voice. Short sentences are good. \n"
-        "   - Example: 'I stop. The sound stops. I wait.' (This works well with slow TTS).\n"
-        "3. THE BRIDGE: Build tension slowly. Focus on the fear of the unknown.\n"
-        "4. THE CLIMAX: Visceral Pain/Shock. (e.g., 'Bones snapping', 'Skin tearing').\n"
-        "5. STYLE: Simple English (A2). First Person ('I')."
+        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (65-70 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "CRITICAL RULES FOR PERFECT TIMING (30s):\n"
+        "1. LENGTH: STRICTLY 65-70 words. Not less, not more.\n"
+        "2. STRUCTURE:\n"
+        "   - Start: Concrete Hook.\n"
+        "   - Middle: Build tension with 2-3 sentences of hesitation/fear.\n"
+        "   - End: Visceral physical shock.\n"
+        "3. PACING: Use commas for flow, but keep sentences impactful.\n"
+        "4. POV: First person ('I'). No visual notes."
     )
     
     payload = {
@@ -96,9 +97,8 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # SES AYARI: -10% Hız (Bu "Creepy Storyteller" hızıdır)
-    # Pitch: -5Hz (Derinlik)
-    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-10%", pitch="-5Hz")
+    # SES: -5% Hız (Atmosferik ideal hız)
+    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -106,14 +106,13 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
-    required_clips = int(audio.duration / 3.0) + 4 # Sahneler biraz daha uzun kalsın (3sn)
+    required_clips = int(audio.duration / 3.0) + 4
     search_terms = keywords * 4
     random.shuffle(search_terms)
 
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            # GÖRSEL ARAMA:
             query_enhanced = f"{q} horror scary dark cinematic pov trembling fear pain"
             url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=5&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
@@ -147,7 +146,7 @@ async def generate_resources(content):
         
     return paths, audio
 
-# --- GÖRSEL EFEKTLER (SABİT & SAKİN - V17/V20 ONAYLI) ---
+# --- GÖRSEL EFEKTLER (SABİT & SAKİN) ---
 def cold_horror_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
@@ -172,7 +171,6 @@ def apply_processing(clip, duration):
     effect_type = random.choice(["zoom", "speed", "mirror", "none"])
     
     if effect_type == "speed":
-        # Hız efekti de sakinleşti (%90-%110)
         speed_factor = random.uniform(0.9, 1.1)
         clip = clip.fx(vfx.speedx, speed_factor)
     elif effect_type == "mirror":
@@ -198,8 +196,8 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                # TEMPO: 3.0 saniye civarı (Ses yavaşladığı için görüntü de yavaşlasın)
-                dur = random.uniform(2.8, 3.5)
+                # TEMPO: 2.8 - 3.2 saniye (Akıcı)
+                dur = random.uniform(2.8, 3.2)
                 processed = apply_processing(c, dur)
                 clips.append(processed)
                 cur_dur += processed.duration
@@ -211,7 +209,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_slowburn_v25.mp4"
+        out = "horror_precision_v27.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -230,7 +228,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAğır Çekim Gerilim (V25)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nTam İsabet Modu (V27)...")
         
         content = get_content(topic)
         
@@ -238,7 +236,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n🐢 Ses yavaşlatıldı (-10%)\n📝 Kelime azaltıldı (60-70)\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 {content['title']}\n🎯 Hedef: 65-70 Kelime (Tam 30sn)\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
