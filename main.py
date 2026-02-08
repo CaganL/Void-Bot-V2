@@ -22,7 +22,7 @@ W, H = 720, 1280
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- YASAKLI KELİMELER (Mutlu videoları engelle) ---
+# --- YASAKLI KELİMELER ---
 BANNED_TERMS = [
     "happy", "smile", "laugh", "business", "corporate", "office", "working", 
     "family", "couple", "romantic", "wedding", "party", "celebration", 
@@ -36,7 +36,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V45: STRICT VISUAL MATCH) ---
+# --- AI İÇERİK (V46: TEKRARSIZ VE KISA) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -47,18 +47,16 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: Gemini'den HİKAYE AKIŞINA GÖRE SIRALI görsel listesi istiyoruz.
+    # PROMPT DEĞİŞİKLİĞİ: "DO NOT REPEAT HOOK" KURALI EKLENDİ
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (60-70 words) ||| VISUAL_QUERIES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| VISUAL_QUERIES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. VISUAL_QUERIES_LIST: Give me exactly 12-15 search terms separated by commas. They must match the story chronologically. \n"
-        "   - IF script says 'I saw a knife', query MUST be 'knife horror'.\n"
-        "   - IF script says 'door opened', query MUST be 'opening door'.\n"
-        "   - DO NOT give random abstract terms unless the story is abstract.\n"
-        "2. LENGTH: 60-70 words (Target 30s).\n"
-        "3. HOOK: Scary and spoken first."
+        "1. VISUAL_QUERIES_LIST: Give me exactly 12-15 chronological search terms separated by commas. MATCH THE STORY.\n"
+        "2. LENGTH: Script must be 50-60 words (Target 25-28s narration).\n"
+        "3. HOOK: Scary and spoken first.\n"
+        "4. **IMPORTANT**: DO NOT repeat the HOOK inside the NARRATION SCRIPT. The script should start with what happens AFTER the hook."
     )
     
     payload = {
@@ -88,11 +86,19 @@ def get_content(topic):
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         visual_queries = [v.strip() for v in parts[4].split(",")]
                         
+                        # Script temizliği (Ekstra güvenlik: Eğer script hook ile başlıyorsa temizle)
+                        hook_text = parts[1].strip()
+                        script_text = parts[3].strip()
+                        
+                        # Basit bir kontrol: Script hook ile başlıyorsa kes
+                        if script_text.lower().startswith(hook_text.lower()):
+                            script_text = script_text[len(hook_text):].strip()
+
                         data = {
                             "title": parts[0].strip(),
-                            "hook": parts[1].strip(),
+                            "hook": hook_text,
                             "description": parts[2].strip(),
-                            "script": parts[3].strip(),
+                            "script": script_text,
                             "visual_queries": visual_queries,
                             "tags": " ".join(valid_tags)
                         }
@@ -140,15 +146,7 @@ def search_pixabay(query):
     except: pass
     return None
 
-# --- AKILLI ARAMA MOTORU (ASIL SİHİR BURADA) ---
 def smart_search(query):
-    """
-    Bu fonksiyon 'Alakasız Video' sorununu çözer.
-    Eğer tam cümleyi bulamazsa, kelimeleri azaltarak (basitleştirerek) arar.
-    Asla rastgele video döndürmez.
-    """
-    # 1. Adım: Tam sorguyu dene (Örn: "bloody knife on wooden floor horror")
-    # Pexels/Pixabay için "dark horror" eklemesini manuel yapıyoruz ama ana kelimeyi koruyoruz
     full_query = f"{query} dark horror"
     print(f"🔍 Aranıyor (Seviye 1): {full_query}")
     
@@ -156,12 +154,8 @@ def smart_search(query):
     if not link: link = search_pixabay(full_query)
     if link: return link
 
-    # 2. Adım: Bulamadı mı? Kelimeleri basitleştir.
-    # Örn: "bloody knife floor" -> "knife horror"
     words = query.split()
     if len(words) > 1:
-        # Ana nesneleri korumaya çalış (Basit bir mantıkla son kelimeyi veya ilk kelimeyi dene)
-        # Genelde son kelimeler nesne olur (on the TABLE, inside the ROOM)
         simplified_query = f"{words[-1]} horror scary" 
         print(f"⚠️ Bulunamadı. Basitleştiriliyor (Seviye 2): {simplified_query}")
         
@@ -169,7 +163,6 @@ def smart_search(query):
         if not link: link = search_pixabay(simplified_query)
         if link: return link
         
-        # O da olmadıysa ilk kelimeyi dene (THE hand...)
         simplified_query_2 = f"{words[0]} horror scary"
         print(f"⚠️ Bulunamadı. Basitleştiriliyor (Seviye 3): {simplified_query_2}")
         
@@ -177,12 +170,9 @@ def smart_search(query):
         if not link: link = search_pixabay(simplified_query_2)
         if link: return link
 
-    # 3. Adım: Hala yoksa, gerçekten soyut bir şey ver ama hikayeden kopma.
-    # Burası "yedek" değil, "atmosfer" aramasıdır.
     print(f"❌ Hiçbir şey bulunamadı. Atmosfer aranıyor.")
     fallback_query = "horror atmosphere dark cinematic"
     link = search_pexels(fallback_query)
-    
     return link
 
 # --- KAYNAK OLUŞTURMA ---
@@ -199,6 +189,7 @@ async def generate_resources(content):
     
     hook_audio = AudioFileClip("hook.mp3")
     script_audio = AudioFileClip("script.mp3")
+    # Es süresi 0.5 + TTS = ~1.5s
     silence = AudioClip(lambda t: [0, 0], duration=0.5, fps=44100)
     
     final_audio = concatenate_audioclips([hook_audio, silence, script_audio])
@@ -216,11 +207,11 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
-    # HER BİR SORGULAMA İÇİN VİDEO BUL (Sırasıyla)
+    # HER BİR SORGULAMA İÇİN VİDEO BUL
     for query in visual_queries:
         if current_duration >= total_duration: break
         
-        video_link = smart_search(query) # <--- Akıllı arama burada kullanılıyor
+        video_link = smart_search(query)
         
         if video_link and video_link not in used_links:
             try:
@@ -232,21 +223,19 @@ async def generate_resources(content):
                 if c.duration > 1.5:
                     paths.append(path)
                     used_links.add(video_link)
-                    # Her klibi montajda ortalama 2.5 saniye kullanacağız
                     current_duration += 2.5
                 c.close()
             except:
                 if os.path.exists(path): os.remove(path)
 
-    # EĞER GEMINI AZ KELİME VERDİYSE VE SÜRE DOLMADIYSA
-    # Listeyi başa sarıp, farklı videolar bulmaya çalış (Aynı konudan)
+    # LOOP YETMEZSE TEKRAR ARA
     loop_count = 0
     while current_duration < total_duration:
-        if loop_count > 2: break # Sonsuz döngü koruması
+        if loop_count > 2: break
         
         for query in visual_queries:
             if current_duration >= total_duration: break
-            video_link = smart_search(f"{query} different angle") # Farklı açı iste
+            video_link = smart_search(f"{query} different angle")
             
             if video_link and video_link not in used_links:
                 try:
@@ -271,7 +260,6 @@ def cold_horror_grade(image):
     return np.clip(cold_img, 0, 255).astype(np.uint8)
 
 def apply_processing(clip, duration):
-    # Loop veya Trim garantisi
     if clip.duration < duration:
         clip = vfx.loop(clip, duration=duration)
     else:
@@ -308,22 +296,20 @@ def build_video(content):
         clips = []
         current_total_duration = 0.0
         
-        # Klipleri ekle
         for p in paths:
             try:
                 c = VideoFileClip(p).without_audio()
-                # Her klibe rastgele bir süre ver (dinamiklik için)
                 dur = random.uniform(2.0, 3.5) 
                 processed = apply_processing(c, dur)
                 clips.append(processed)
                 current_total_duration += processed.duration
             except: continue
 
-        # SÜRE YETMEZSE KOPYALA (DONMA GARANTİSİ)
+        # GÜVENLİK DÖNGÜSÜ: SÜRE YETMEZSE KOPYALA
         while current_total_duration < audio.duration:
             print("⚠️ Süre dolduruluyor...")
             random_clip = random.choice(clips).copy()
-            random_clip = random_clip.fx(vfx.mirror_x) # Ayna efektiyle farklılaştır
+            random_clip = random_clip.fx(vfx.mirror_x)
             clips.append(random_clip)
             current_total_duration += random_clip.duration
 
@@ -333,7 +319,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v45_pro_match.mp4"
+        out = "horror_v46_final.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -352,7 +338,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nProfesyonel Eşleşme Modu (V45)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nTekrarsız Mod (V46)...")
         
         content = get_content(topic)
         
@@ -360,7 +346,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🧠 Akıllı Arama Aktif\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n✂️ Metin Temizlendi\n⏱️ Hedef: ~30sn\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
