@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V13: TEMİZ METİN & KISA CÜMLELER) ---
+# --- AI İÇERİK (V14: CERRAHİ KESİM - ULTRA KISA & NET) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -39,20 +39,19 @@ def get_content(topic):
     ]
 
     # PROMPT GÜNCELLEMESİ:
-    # 1. "NARRATION ONLY": Görsel tarifleri metinden ayıkladık.
-    # 2. Kelime sayısı 60-75'e çekildi (Süre 30sn altı olsun diye).
-    # 3. "No 'and' connectors": Cümleleri bölmek için bağlaçları azalttık.
+    # 1. Kelime Sayısı: 50-60 (Çok sıkı limit).
+    # 2. "Remove Fluff": Gereksiz kelimeler (the, a, an) atılacak.
+    # 3. Hook: "Personal & Aggressive" (Benim laptopum...).
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| CONCRETE HOOK (Max 8 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (60-75 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "SHORT TITLE (Max 5 words) ||| PERSONAL HOOK (Max 8 words, e.g., 'My laptop...') ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
         "CRITICAL RULES:\n"
-        "1. CLEAN TEXT: Write ONLY what the voiceover should say. DO NOT include visual notes like '(POV)', '[Close up]', or 'The camera shows...'.\n"
-        "2. LANGUAGE: Simple English (A2). FIRST PERSON ('I').\n"
-        "3. STRUCTURE: Break long sentences. Instead of 'It lunges and grabs me', write 'It lunges. Cold hand on my mouth.'\n"
-        "4. PACING: Use '...' for scary pauses.\n"
-        "5. ENDING: Physical action (e.g., 'It bit me').\n"
-        "6. LENGTH: 60-75 words (Strict limit for <30s video)."
+        "1. LENGTH: STRICTLY 50-60 words. Must fit in 28 seconds.\n"
+        "2. STYLE: Ultra-concise. Drop articles where possible (e.g., 'I hear clicks' instead of 'I hear the clicks').\n"
+        "3. POV: First person ('I'). No visual notes.\n"
+        "4. ENDING: Sudden physical pain or shock (e.g., 'It smashed my hand').\n"
+        "5. PACING: Fast action. No long descriptions."
     )
     
     payload = {
@@ -82,7 +81,7 @@ def get_content(topic):
                             "title": parts[0].strip(),
                             "hook": parts[1].strip(),
                             "description": parts[2].strip(),
-                            "script": parts[3].strip(), # Artık temiz metin gelecek
+                            "script": parts[3].strip(),
                             "keywords": [k.strip() for k in parts[4].split(",")]
                         }
                         print(f"✅ İçerik alındı ({model})")
@@ -96,8 +95,10 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # Ses: -5% Hız (Atmosferik ama baymayan hız)
-    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
+    # SES AYARI:
+    # Rate: +0% (Normal hız - Yavaşlık kalktı, süre kısaldı)
+    # Pitch: -5Hz (Korku tonu korunuyor)
+    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+0%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -105,6 +106,7 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
+    # Klip sayısı audio süresine göre dinamik
     required_clips = int(audio.duration / 2.0) + 4
     search_terms = keywords * 4
     random.shuffle(search_terms)
@@ -112,7 +114,8 @@ async def generate_resources(content):
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            query_enhanced = f"{q} horror scary close up pov dark cinematic shadow"
+            # GÖRSEL ARAMA: Laptop/Teknoloji korkusu için "glitch" ekledik
+            query_enhanced = f"{q} horror scary close up pov dark cinematic glitch"
             url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=5&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
@@ -185,7 +188,8 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                dur = random.uniform(2.0, 3.0)
+                # TEMPO: Hızlı ve dinamik (2.0 - 2.8 saniye)
+                dur = random.uniform(2.0, 2.8)
                 processed = apply_processing(c, dur)
                 clips.append(processed)
                 cur_dur += processed.duration
@@ -197,7 +201,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_final_v13.mp4"
+        out = "horror_surgical_v14.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -216,7 +220,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nTemizleniyor & Kısaltılıyor (V13)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nCerrahi Kesim Modu (28sn Hedef)...")
         
         content = get_content(topic)
         
@@ -224,7 +228,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n📝 Yönetmen notları silindi.\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 {content['title']}\n✂️ Kelimeler azaltıldı, tempo artırıldı...\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
