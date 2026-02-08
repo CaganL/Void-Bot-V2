@@ -7,7 +7,7 @@ import time
 import asyncio
 import edge_tts
 from moviepy.editor import (
-    VideoFileClip, AudioFileClip, concatenate_videoclips, vfx
+    VideoFileClip, AudioFileClip, concatenate_videoclips
 )
 
 # --- AYARLAR ---
@@ -18,83 +18,78 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 1080, 1920
 
-# --- KRİTİK DÜZELTME: BAŞLANGIÇ TEMİZLİĞİ ---
+# --- TEMİZLİK ---
 def clean_start():
-    """Eski bağlantıları ve takılı kalan oturumları temizler."""
-    print("🧹 Eski bağlantılar temizleniyor...")
     try:
-        # 1. Mevcut Webhook'u sil (Çakışmayı önler)
-        requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=10)
-        print("✅ Webhook silindi.")
-        
-        # 2. Biraz bekle ki Telegram API nefes alsın
-        time.sleep(2)
-        print("🤖 Bot başlatılıyor...")
-    except Exception as e:
-        print(f"⚠️ Temizlik uyarısı: {e}")
+        requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
+        print("Bot başlatılıyor...")
+    except: pass
 
-# --- AI İÇERİK (HOOK ODAKLI & KISA) ---
+# --- AI İÇERİK (YEDEK YOK - SADECE YENİ) ---
 def get_content(topic):
-    models = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    # Farklı modelleri sırayla dener
+    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
     
-    # 25-35 saniye için kelime sayısı: ~60-75 kelime.
     prompt = (
-        f"You are a master of horror shorts. Create a terrifying script about '{topic}'. "
-        "1. START with a 'KILLER HOOK' (a shocking 1-sentence statement or question). "
-        "2. The story must be fast-paced, dark, and twisty. "
-        "3. Total length: STRICTLY 60 to 75 words (for 25-30s video). "
-        "4. 'visual_keywords' must be dark, atmospheric nouns (e.g., 'abandoned hallway', 'shadow', 'skull'). "
+        f"You are a narrator for a viral horror YouTube Shorts channel. Write a script about '{topic}'. "
+        "STRICT RULES: "
+        "1. NO INTRO, NO OUTRO. Start directly with the story. "
+        "2. Length: MUST be between 90 and 110 words (Targeting 30-35 seconds). "
+        "3. Flow: Use short sentences to reduce pauses. "
+        "4. Visuals: Provide 6 dark, scary, atmospheric keywords. "
         "Output ONLY JSON: "
-        "{'script': 'Full text including hook', 'hook_text_only': 'Just the hook sentence', 'title': 'Title', 'visual_keywords': ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']}"
+        "{'script': 'Story text...', 'hook': 'First shocking sentence', 'keywords': ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']}"
     )
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
-    for model in models:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
-            r = requests.post(url, json=payload, timeout=20)
-            if r.status_code == 200:
-                text = r.json()['candidates'][0]['content']['parts'][0]['text']
-                # Json temizliği
-                clean_text = text.replace("```json", "").replace("```", "").strip()
-                data = json.loads(clean_text)
-                return data
-        except: continue
+    # 3 Kez dene, başaramazsan HATA ver (Eski senaryo kullanma)
+    for attempt in range(3):
+        for model in models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+                r = requests.post(url, json=payload, timeout=20)
+                if r.status_code == 200:
+                    text = r.json()['candidates'][0]['content']['parts'][0]['text']
+                    clean_text = text.replace("```json", "").replace("```", "").strip()
+                    data = json.loads(clean_text)
+                    return data
+            except:
+                continue
+        time.sleep(1) # Hata olursa 1 saniye bekle tekrar dene
 
-    # Fallback (Yedek)
-    return {
-        "script": "Do you know who is watching you right now? Look closely at the shadows. They say if you stare long enough, they stare back.",
-        "hook_text_only": "Do you know who is watching you right now?",
-        "title": "Don't Look",
-        "visual_keywords": ["dark eye", "shadow", "fear"]
-    }
+    return None # Başarısız olursa None döner
 
-# --- MEDYA VE SES ---
+# --- SES VE VİDEO ---
 async def generate_resources(content):
     script = content["script"]
-    keywords = content["visual_keywords"]
+    keywords = content["keywords"]
     
-    # Seslendirme: Pitch -2Hz (Daha kalın/korkunç)
-    communicate = edge_tts.Communicate(script, "en-US-GuyNeural", rate="+8%", pitch="-2Hz")
+    # --- SES AYARLARI (KORKU MODU) ---
+    # Voice: Christopher (Daha hikaye odaklı/tok ses)
+    # Rate: +10% (Boşlukları kapatmak ve akıcı olmak için hızlandı)
+    # Pitch: -5Hz (Daha kalın ve gergin ses)
+    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+10%", pitch="-5Hz")
+    
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
     headers = {"Authorization": PEXELS_API_KEY}
     paths = []
     
-    required_clips = int(audio.duration / 2.5) + 3 
-    extended_keywords = keywords * 3
-    random.shuffle(extended_keywords)
+    # Ses süresini dolduracak kadar klip + yedek
+    required_clips = int(audio.duration / 2.5) + 4
+    
+    # Kelimeleri karıştır
+    search_terms = keywords * 3
+    random.shuffle(search_terms)
 
-    for q in extended_keywords:
+    for q in search_terms:
         if len(paths) >= required_clips: break
         
-        # FİLTRE: Sadece karanlık/korku videoları
-        dark_query = f"{q} dark horror scary creepy night vertical"
-        
         try:
-            url = f"https://api.pexels.com/videos/search?query={dark_query}&per_page=3&orientation=portrait"
+            # Sadece karanlık/dikey videolar
+            url = f"https://api.pexels.com/videos/search?query={q} dark horror scary creepy&per_page=4&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
             for v in data.get("videos", []):
@@ -112,7 +107,7 @@ async def generate_resources(content):
                 
                 try:
                     c = VideoFileClip(path)
-                    if c.duration > 1.5:
+                    if c.duration > 1.0: # 1 saniyeden uzunsa al
                         paths.append(path)
                     c.close()
                 except:
@@ -121,29 +116,24 @@ async def generate_resources(content):
         
     return paths, audio
 
-# --- EFEKTLER (ZOOM & CROP) ---
-def apply_horror_effects(clip, duration=3):
-    # Süre kesimi
+# --- EFEKTLER ---
+def apply_effects(clip, duration):
+    # Rastgele bir kesit al
     if clip.duration > duration:
         start = random.uniform(0, clip.duration - duration)
         clip = clip.subclip(start, start + duration)
     
     # 9:16 Kırpma
     target_ratio = W / H
-    clip_ratio = clip.w / clip.h
-    
-    if clip_ratio > target_ratio:
+    if clip.w / clip.h > target_ratio:
         clip = clip.resize(height=H)
         clip = clip.crop(x1=clip.w/2 - W/2, width=W, height=H)
     else:
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
         
-    # ZOOM EFFECT (Yavaşça yaklaşma)
-    clip = clip.resize(lambda t: 1 + 0.04 * t) 
-    clip = clip.set_position(('center', 'center'))
-    
-    return clip
+    # Zoom Efekti (%5 büyüme - İzleyiciyi içine çeker)
+    return clip.resize(lambda t: 1 + 0.05 * t).set_position(('center', 'center'))
 
 # --- MONTAJ ---
 def build_video(content):
@@ -152,74 +142,72 @@ def build_video(content):
         if not paths: return None
             
         clips = []
-        current_duration = 0
+        cur_dur = 0
         
         for p in paths:
-            if current_duration >= audio.duration: break
+            if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                # Hızlı geçişler (2.0 - 3.5 sn)
-                clip_len = random.uniform(2.0, 3.5)
-                processed_clip = apply_horror_effects(c, duration=clip_len)
-                clips.append(processed_clip)
-                current_duration += processed_clip.duration
+                # Klipler arası süre: 2.0sn ile 3.5sn arası (Hızlı kurgu)
+                dur = random.uniform(2.0, 3.5)
+                
+                processed = apply_effects(c, dur)
+                clips.append(processed)
+                cur_dur += processed.duration
             except: continue
 
         if not clips: return None
 
-        main_clip = concatenate_videoclips(clips, method="compose")
-        main_clip = main_clip.set_audio(audio)
+        final = concatenate_videoclips(clips, method="compose").set_audio(audio)
         
-        if main_clip.duration > audio.duration:
-            main_clip = main_clip.subclip(0, audio.duration)
+        # Tam ses süresinde bitir
+        if final.duration > audio.duration:
+            final = final.subclip(0, audio.duration)
         
-        final_video = main_clip 
-        out = "final_horror.mp4"
-        
-        final_video.write_videofile(
-            out, fps=24, codec="libx264", preset="veryfast", 
-            bitrate="4000k", audio_bitrate="192k", threads=4, logger=None
-        )
+        out = "horror_final.mp4"
+        # Render Kalitesi (Preset veryfast = Hızlı render)
+        final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="4500k", audio_bitrate="192k", threads=4, logger=None)
         
         audio.close()
         for c in clips: c.close()
         for p in paths: 
             if os.path.exists(p): os.remove(p)
-            
         return out
     except Exception as e:
-        print(f"Genel Hata: {e}")
+        print(e)
         return None
 
 # --- TELEGRAM ---
-@bot.message_handler(commands=["horror"])
-def handle_video(message):
+@bot.message_handler(commands=["horror", "video"])
+def handle(message):
     try:
         args = message.text.split(maxsplit=1)
-        topic = args[1] if len(args) > 1 else "scary fact"
+        topic = args[1] if len(args) > 1 else "scary facts"
         
-        bot.reply_to(message, f"💀 Konu: **{topic}**\n🕯️ Karanlık arşivler taranıyor, gerilim yükleniyor...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo yazılıyor... (Yedek yok, tamamen yeni!)")
         
         content = get_content(topic)
+        
+        if not content:
+            bot.edit_message_text("❌ Senaryo oluşturulamadı. Lütfen tekrar dene.", message.chat.id, msg.message_id)
+            return
+
+        bot.edit_message_text(f"🎥 Senaryo hazır!\n🎙️ Seslendiriliyor: '{content['hook']}'\n⏳ Video işleniyor...", message.chat.id, msg.message_id)
+
         path = build_video(content)
         
         if path and os.path.exists(path):
-            caption_text = (
-                f"⚠️ **{content['hook_text_only'].upper()}**\n\n"
-                f"{content['script']}\n\n"
-                "#horror #scary #creepy #mystery #shorts"
-            )
-            if len(caption_text) > 1000: caption_text = caption_text[:1000]
-
+            caption = f"⚠️ **{content['hook']}**\n\n{content['script']}\n\n#horror #shorts #scary"
+            if len(caption) > 1000: caption = caption[:1000]
+            
             with open(path, "rb") as v:
-                bot.send_video(message.chat.id, v, caption=caption_text, parse_mode="Markdown")
+                bot.send_video(message.chat.id, v, caption=caption)
         else:
-            bot.reply_to(message, "❌ Korku videosu oluşturulamadı.")
+            bot.edit_message_text("❌ Video render hatası.", message.chat.id, msg.message_id)
             
     except Exception as e:
-        bot.reply_to(message, f"Hata: {e}")
+        bot.reply_to(message, str(e))
 
-# --- ÇALIŞTIRMA ---
 if __name__ == "__main__":
-    clean_start() # Temizliği yap
-    bot.polling(non_stop=True) # Botu başlat
+    clean_start()
+    bot.polling(non_stop=True)
