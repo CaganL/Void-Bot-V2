@@ -18,8 +18,8 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 720, 1280
 
-# --- SABİT ETİKETLER ---
-FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #scarystories #urbanlegends #creepypasta #viral #fyp #horrortok"
+# --- SABİT ETİKETLER (Genel) ---
+FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
 # --- TEMİZLİK ---
 def clean_start():
@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V30: 75-85 KELİME & -5% HIZ) ---
+# --- AI İÇERİK (V31: VIRAL OPTIMIZATION - KISA HOOK & SEO) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -38,22 +38,23 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT AYARI:
-    # 1. Kelime: 75-85 (İdeal Süre İçin).
-    # 2. Hız: -5% (Atmosferik).
-    # 3. Yapı: Bridge (Tereddüt) kısmı daha detaylı.
+    # PROMPT DEVRİMİ:
+    # 1. Hook: "PUNCHY". Max 5 kelime.
+    # 2. Title: "CLICKBAIT". (DEAD, KILLER, 3AM gibi kelimeler).
+    # 3. Length: 60-70 Kelime (30 saniye garantisi).
+    # 4. Tags: Konuya özel etiketler üretmesi istendi.
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (75-85 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
-        "CRITICAL RULES (Target 30-33 Seconds):\n"
-        "1. LENGTH: STRICTLY 75-85 words. Use this extra space to describe the FEAR in the middle section.\n"
-        "2. STRUCTURE:\n"
-        "   - Hook: Concrete & Scary.\n"
-        "   - Middle (Bridge): EXPAND this. Describe the trembling, the sweat, the hesitation. Use commas for flow.\n"
-        "   - End: Visceral physical shock/pain (e.g., 'Skin tore', 'Bones crushed').\n"
-        "3. PACING: Flowing narration with a creepy undertone.\n"
-        "4. POV: First person ('I'). No visual notes."
+        "CLICKBAIT TITLE (Max 4 words, scary) ||| PUNCHY HOOK (Max 5 words. Shocking.) ||| SEO DESCRIPTION (Include keywords like 'Real scary story') ||| NARRATION SCRIPT (60-70 words) ||| #tag1 #tag2 #tag3 #tag4 #tag5\n\n"
+        "CRITICAL RULES (Target 28-30 Seconds):\n"
+        "1. LENGTH: STRICTLY 60-70 words. We need a tight 30s video.\n"
+        "2. HOOK: Must be short and aggressive. Example: 'Dead mom texted me.' (4 words).\n"
+        "3. TITLE: Use trigger words: DEAD, 3AM, GHOST, KILLER.\n"
+        "4. DESCRIPTION: Write for SEO. Use high search volume keywords.\n"
+        "5. TAGS: Generate 5 specific hashtags relevant to the story (e.g. #hauntedphone).\n"
+        "6. PACING: Flowing narration (-5% speed optimized). Use commas.\n"
+        "7. CLIMAX: Visceral physical shock."
     )
     
     payload = {
@@ -79,12 +80,17 @@ def get_content(topic):
                     parts = raw_text.split("|||")
                     
                     if len(parts) >= 5:
+                        # Etiketleri temizle ve listeye çevir
+                        raw_tags = parts[4].strip().replace(",", " ").split()
+                        valid_tags = [t for t in raw_tags if t.startswith("#")]
+                        
                         data = {
                             "title": parts[0].strip(),
                             "hook": parts[1].strip(),
                             "description": parts[2].strip(),
                             "script": parts[3].strip(),
-                            "keywords": [k.strip() for k in parts[4].split(",")]
+                            "tags": " ".join(valid_tags), # Özel etiketler
+                            "search_keywords": [k.replace("#", "") for k in valid_tags] # Görsel arama için
                         }
                         print(f"✅ İçerik alındı ({model})")
                         return data
@@ -95,9 +101,10 @@ def get_content(topic):
 # --- MEDYA OLUŞTURMA ---
 async def generate_resources(content):
     script = content["script"]
-    keywords = content["keywords"]
+    # Görsel arama için etiketleri kullanıyoruz
+    keywords = content["search_keywords"]
     
-    # SES AYARI: -5% Hız (En Beğenilen Ayar)
+    # SES AYARI: -5% Hız (En ideali bu)
     communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
@@ -106,7 +113,6 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
-    # Klip sayısı artırıldı
     required_clips = int(audio.duration / 3.0) + 4
     search_terms = keywords * 4
     random.shuffle(search_terms)
@@ -147,7 +153,7 @@ async def generate_resources(content):
         
     return paths, audio
 
-# --- GÖRSEL EFEKTLER (SABİT & SAKİN - ONAYLI) ---
+# --- GÖRSEL EFEKTLER (SABİT & SAKİN) ---
 def cold_horror_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
@@ -197,7 +203,6 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                # TEMPO: 3.0 saniye civarı
                 dur = random.uniform(2.8, 3.5)
                 processed = apply_processing(c, dur)
                 clips.append(processed)
@@ -210,7 +215,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_ultimate_v30.mp4"
+        out = "horror_viral_v31.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -229,7 +234,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nUltimate Balance Modu (V30)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nViral Optimizasyon Modu (V31)...")
         
         content = get_content(topic)
         
@@ -237,17 +242,20 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n⚖️ 75-85 Kelime | -5% Hız\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🪝 {content['hook']}\n🏷️ Özel Etiketler Eklendi.\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
         if path and os.path.exists(path):
+            # Etiketleri Birleştir: Sabitler + Botun Ürettikleri
+            final_tags = f"{FIXED_HASHTAGS} {content['tags']}"
+            
             caption_text = (
                 f"🪝 **HOOK:**\n{content['hook']}\n\n"
                 f"🎬 **Başlık:**\n{content['title']}\n\n"
                 f"📝 **Hikaye:**\n{content['script']}\n\n"
                 f"🏷️ **Açıklama:**\n{content['description']}\n\n"
-                f"#️⃣ **Etiketler:**\n{FIXED_HASHTAGS}"
+                f"#️⃣ **Etiketler:**\n{final_tags}"
             )
             
             if len(caption_text) > 1000: caption_text = caption_text[:1000]
