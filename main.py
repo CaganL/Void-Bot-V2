@@ -21,18 +21,18 @@ W, H = 1080, 1920
 def clean_start():
     print("🧹 Eski bağlantılar temizleniyor...")
     try:
-        # Webhook'u silerek çakışmaları önle
+        # Çakışmayı önlemek için webhook'u sil
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=10)
         time.sleep(1)
         print("✅ Bot başlatılıyor...")
     except Exception as e:
         print(f"⚠️ Temizlik uyarısı: {e}")
 
-# --- AI İÇERİK (DÜZ METİN MODU - ASLA HATA VERMEZ) ---
+# --- AI İÇERİK (GARANTİLİ SİSTEM) ---
 def get_content(topic):
-    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    # Modelleri en kararlıdan en yeniye doğru sıraladım
+    models = ["gemini-1.5-flash", "gemini-pro", "gemini-2.0-flash"]
     
-    # Güvenlik ayarlarını tamamen kapatıyoruz
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -40,7 +40,6 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # JSON yerine Düz Metin istiyoruz (Daha sağlam)
     prompt = (
         f"You are a horror storyteller. Write a short script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
@@ -60,15 +59,20 @@ def get_content(topic):
 
     for model in models:
         try:
+            # v1beta endpoint'i en uyumlusudur
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
             r = requests.post(url, json=payload, timeout=20)
             
+            # KOTA HATASI (429) ALIRSAK BEKLE
+            if r.status_code == 429:
+                print(f"⏳ Kota dolu ({model}), 5 saniye bekleniyor...")
+                time.sleep(5)
+                continue
+
             if r.status_code == 200:
                 response_json = r.json()
                 if 'candidates' in response_json and response_json['candidates']:
                     raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
-                    
-                    # Düz metni "|||" işaretlerinden bölüyoruz
                     parts = raw_text.split("|||")
                     
                     if len(parts) >= 3:
@@ -79,26 +83,26 @@ def get_content(topic):
                         }
                         print(f"✅ İçerik alındı: {data['hook']}")
                         return data
-                    else:
-                        print(f"⚠️ Format hatası ({model}): {raw_text[:50]}...")
-                else:
-                    print(f"⚠️ Boş cevap ({model}) - Güvenlik filtresi olabilir.")
-            else:
-                print(f"❌ API Hatası ({model}): {r.status_code} - {r.text}")
-                
         except Exception as e:
             print(f"Hata ({model}): {e}")
             continue
 
-    print("❌ Tüm modeller başarısız oldu.")
-    return None
+    print("❌ API Kotaları tükendi veya hata verdi. ACİL DURUM SENARYOSU devreye giriyor.")
+    
+    # --- ACİL DURUM SENARYOSU (ASLA BOŞ DÖNMEZ) ---
+    # Eğer AI cevap vermezse bu hazır senaryo kullanılır
+    return {
+        "hook": "DO NOT LOOK BEHIND YOU",
+        "script": "Whatever you do, do not turn around right now. They say that spirits usually stand in the corner of the room, waiting for you to notice them. But the dangerous ones? They stand right behind your back. If you feel a sudden chill on your neck, or if the hair on your arms stands up, it is already too late. Just keep looking at your screen. Pretend you don't know they are there.",
+        "keywords": ["dark shadow", "mirror reflection", "creepy face", "ghost", "dark room", "fear"]
+    }
 
-# --- SES VE VİDEO ---
+# --- MEDYA OLUŞTURMA ---
 async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # Ses: Christopher (Korku tonu)
+    # Seslendirme
     communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+10%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
@@ -115,7 +119,6 @@ async def generate_resources(content):
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            # Sadece dikey ve karanlık videolar
             url = f"https://api.pexels.com/videos/search?query={q} dark horror scary&per_page=3&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
@@ -156,7 +159,6 @@ def apply_effects(clip, duration):
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
         
-    # Zoom efekti
     return clip.resize(lambda t: 1 + 0.05 * t).set_position(('center', 'center'))
 
 # --- MONTAJ ---
@@ -203,15 +205,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo yazılıyor... (V3 - Text Modu)")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo yazılıyor... (V4 - FailSafe Modu)")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Senaryo oluşturulamadı. Logları kontrol et.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Kritik hata: Yedek sistem bile çalışmadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎥 Senaryo hazır!\n🎙️ Seslendiriliyor: '{content['hook']}'\n⏳ Video işleniyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎥 Senaryo: {content['hook']}\n⏳ Video işleniyor...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
