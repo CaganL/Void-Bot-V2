@@ -6,6 +6,7 @@ import json
 import time
 import asyncio
 import edge_tts
+import re  # Regex kütüphanesi eklendi (JSON bulmak için)
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, concatenate_videoclips
 )
@@ -25,11 +26,18 @@ def clean_start():
         print("Bot başlatılıyor...")
     except: pass
 
-# --- AI İÇERİK (YEDEK YOK - SADECE YENİ) ---
+# --- AI İÇERİK (GÜVENLİK AYARLI & SAĞLAM JSON) ---
 def get_content(topic):
-    # Farklı modelleri sırayla dener
     models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
     
+    # KORKU İÇERİĞİ İÇİN GÜVENLİK FİLTRELERİNİ KAPATIYORUZ
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+
     prompt = (
         f"You are a narrator for a viral horror YouTube Shorts channel. Write a script about '{topic}'. "
         "STRICT RULES: "
@@ -41,34 +49,52 @@ def get_content(topic):
         "{'script': 'Story text...', 'hook': 'First shocking sentence', 'keywords': ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']}"
     )
     
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "safetySettings": safety_settings # Ayarları buraya ekledik
+    }
 
-    # 3 Kez dene, başaramazsan HATA ver (Eski senaryo kullanma)
-    for attempt in range(3):
+    print(f"🤖 Gemini'ye soruluyor: {topic}...")
+
+    for attempt in range(3): # 3 kere dene
         for model in models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
                 r = requests.post(url, json=payload, timeout=20)
+                
                 if r.status_code == 200:
-                    text = r.json()['candidates'][0]['content']['parts'][0]['text']
-                    clean_text = text.replace("```json", "").replace("```", "").strip()
-                    data = json.loads(clean_text)
-                    return data
-            except:
+                    response_json = r.json()
+                    # Cevap var mı kontrol et
+                    if 'candidates' not in response_json or not response_json['candidates']:
+                        print(f"⚠️ {model} boş döndü (Güvenlik takılmış olabilir).")
+                        continue
+                        
+                    text = response_json['candidates'][0]['content']['parts'][0]['text']
+                    
+                    # --- JSON TEMİZLEME (AKILLI MOD) ---
+                    # Regex ile metnin içindeki İLK ve SON süslü parantezi bulur.
+                    match = re.search(r'\{.*\}', text, re.DOTALL)
+                    if match:
+                        json_str = match.group(0)
+                        data = json.loads(json_str)
+                        print("✅ Senaryo başarıyla oluşturuldu.")
+                        return data
+                    else:
+                        print("❌ JSON formatı bulunamadı.")
+            except Exception as e:
+                print(f"Hata ({model}): {e}")
                 continue
-        time.sleep(1) # Hata olursa 1 saniye bekle tekrar dene
+        time.sleep(1)
 
-    return None # Başarısız olursa None döner
+    print("❌ Tüm denemeler başarısız.")
+    return None
 
 # --- SES VE VİDEO ---
 async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # --- SES AYARLARI (KORKU MODU) ---
-    # Voice: Christopher (Daha hikaye odaklı/tok ses)
-    # Rate: +10% (Boşlukları kapatmak ve akıcı olmak için hızlandı)
-    # Pitch: -5Hz (Daha kalın ve gergin ses)
+    # Voice: Christopher (Korku/Gerilim için en iyisi)
     communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+10%", pitch="-5Hz")
     
     await communicate.save("voice.mp3")
@@ -77,18 +103,15 @@ async def generate_resources(content):
     headers = {"Authorization": PEXELS_API_KEY}
     paths = []
     
-    # Ses süresini dolduracak kadar klip + yedek
     required_clips = int(audio.duration / 2.5) + 4
-    
-    # Kelimeleri karıştır
     search_terms = keywords * 3
     random.shuffle(search_terms)
 
+    print("🎬 Videolar aranıyor...")
+
     for q in search_terms:
         if len(paths) >= required_clips: break
-        
         try:
-            # Sadece karanlık/dikey videolar
             url = f"https://api.pexels.com/videos/search?query={q} dark horror scary creepy&per_page=4&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
@@ -107,8 +130,7 @@ async def generate_resources(content):
                 
                 try:
                     c = VideoFileClip(path)
-                    if c.duration > 1.0: # 1 saniyeden uzunsa al
-                        paths.append(path)
+                    if c.duration > 1.0: paths.append(path)
                     c.close()
                 except:
                     if os.path.exists(path): os.remove(path)
@@ -118,12 +140,10 @@ async def generate_resources(content):
 
 # --- EFEKTLER ---
 def apply_effects(clip, duration):
-    # Rastgele bir kesit al
     if clip.duration > duration:
         start = random.uniform(0, clip.duration - duration)
         clip = clip.subclip(start, start + duration)
     
-    # 9:16 Kırpma
     target_ratio = W / H
     if clip.w / clip.h > target_ratio:
         clip = clip.resize(height=H)
@@ -132,7 +152,6 @@ def apply_effects(clip, duration):
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
         
-    # Zoom Efekti (%5 büyüme - İzleyiciyi içine çeker)
     return clip.resize(lambda t: 1 + 0.05 * t).set_position(('center', 'center'))
 
 # --- MONTAJ ---
@@ -148,9 +167,7 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                # Klipler arası süre: 2.0sn ile 3.5sn arası (Hızlı kurgu)
                 dur = random.uniform(2.0, 3.5)
-                
                 processed = apply_effects(c, dur)
                 clips.append(processed)
                 cur_dur += processed.duration
@@ -159,13 +176,10 @@ def build_video(content):
         if not clips: return None
 
         final = concatenate_videoclips(clips, method="compose").set_audio(audio)
-        
-        # Tam ses süresinde bitir
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
         out = "horror_final.mp4"
-        # Render Kalitesi (Preset veryfast = Hızlı render)
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="4500k", audio_bitrate="192k", threads=4, logger=None)
         
         audio.close()
@@ -174,7 +188,7 @@ def build_video(content):
             if os.path.exists(p): os.remove(p)
         return out
     except Exception as e:
-        print(e)
+        print(f"Montaj hatası: {e}")
         return None
 
 # --- TELEGRAM ---
@@ -184,12 +198,12 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary facts"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo yazılıyor... (Yedek yok, tamamen yeni!)")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo yazılıyor... (Yeni Sistem)")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Senaryo oluşturulamadı. Lütfen tekrar dene.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Senaryo oluşturulamadı (Güvenlik veya API hatası).", message.chat.id, msg.message_id)
             return
 
         bot.edit_message_text(f"🎥 Senaryo hazır!\n🎙️ Seslendiriliyor: '{content['hook']}'\n⏳ Video işleniyor...", message.chat.id, msg.message_id)
@@ -210,4 +224,5 @@ def handle(message):
 
 if __name__ == "__main__":
     clean_start()
+    print("🚀 Bot aktif! /horror komutu bekleniyor.")
     bot.polling(non_stop=True)
