@@ -10,7 +10,7 @@ from moviepy.editor import (
     VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips, AudioClip
 )
 
-# --- AYARLAR (RAILWAY) ---
+# --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY")
@@ -22,13 +22,32 @@ W, H = 720, 1280
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
+# --- YASAKLI KELİMELER LİSTESİ (FİLTRE) ---
+# Eğer video linkinde veya etiketlerinde bunlar varsa, o videoyu ASLA kullanma.
+BANNED_TERMS = [
+    "happy", "smile", "laugh", "business", "corporate", "office", "working", 
+    "family", "couple", "romantic", "wedding", "party", "celebration", 
+    "wellness", "spa", "massage", "yoga", "relax", "calm", "bright", 
+    "sunny", "beach", "holiday", "vacation", "funny", "cute", "baby"
+]
+
+# --- YEDEK KORKU LİNKLERİ (HARDCODED FALLBACK) ---
+# Pexels/Pixabay saçmalarsa kullanılacak garanti korku videoları
+FALLBACK_HORROR_VIDEOS = [
+    "https://videos.pexels.com/video-files/5435032/5435032-hd_720_1280_25fps.mp4", # Glitch
+    "https://videos.pexels.com/video-files/7655848/7655848-hd_720_1280_30fps.mp4", # Shadow
+    "https://videos.pexels.com/video-files/6954203/6954203-hd_720_1280_25fps.mp4", # Fog
+    "https://videos.pexels.com/video-files/8056976/8056976-hd_720_1280_25fps.mp4", # Dark Water
+    "https://videos.pexels.com/video-files/4990242/4990242-hd_720_1280_30fps.mp4"  # Scary Forest
+]
+
 # --- TEMİZLİK ---
 def clean_start():
     try:
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V41: ATMOSFERİK BETİMLEMELER) ---
+# --- AI İÇERİK (V42: VİRGÜLLÜ SIKIŞTIRILMIŞ MOD) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -39,18 +58,17 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT GÜNCELLEMESİ: DETAYLI GÖRSEL TARİFLERİ
+    # PROMPT: "ATMOSPHERE FIRST"
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
         "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (60-70 words) ||| VISUAL_QUERIES (15 TERMS) ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. VISUAL QUERIES: Provide exactly 15 chronological search terms. **CRITICAL: Do not use single words like 'hand' or 'door'. Describe the atmosphere and action.**\n"
-        "   - BAD: 'hand', 'walking', 'eyes'\n"
-        "   - GOOD: 'pale trembling hand reaching in dark', 'nervous feet walking on creaky wood floor', 'scary glowing eyes in shadow deep focus'\n"
-        "2. SCRIPT LENGTH: 60-70 words (Target 30s).\n"
-        "3. HOOK: Scary and spoken first.\n"
-        "4. TAGS: Specific hashtags."
+        "1. VISUAL QUERIES: Give me 15 terms. FOCUS ON LIGHTING AND TEXTURE, NOT JUST OBJECTS.\n"
+        "   - BAD: 'hand', 'door', 'face'\n"
+        "   - GOOD: 'silhouette in doorway', 'rusty metal texture', 'flickering light bulb', 'shadow hand on wall'\n"
+        "2. LENGTH: 60-70 words.\n"
+        "3. HOOK: Scary and spoken first."
     )
     
     payload = {
@@ -80,9 +98,8 @@ def get_content(topic):
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         visual_queries = [v.strip() for v in parts[4].split(",")]
                         
-                        # Güvenlik önlemi: Eğer 15'ten az geldiyse doldur
                         while len(visual_queries) < 15:
-                            visual_queries.append("scary dark atmosphere cinematic")
+                            visual_queries.append("scary dark cinematic atmosphere")
 
                         data = {
                             "title": parts[0].strip(),
@@ -93,23 +110,46 @@ def get_content(topic):
                             "tags": " ".join(valid_tags)
                         }
                         print(f"✅ İçerik alındı ({model})")
-                        print(f"👀 Görsel Sorguları: {visual_queries}") # Konsoldan kontrol et
                         return data
         except: continue
 
     return None
 
-# --- VİDEO KAYNAKLARI (GÜÇLENDİRİLMİŞ ARAMA) ---
+# --- AKILLI FİLTRELEME FONKSİYONU ---
+def is_safe_video(video_url, tags=[]):
+    """
+    Video URL'si veya etiketleri 'yasaklı kelimeler' içeriyorsa False döner.
+    Böylece 'masaj yapan el' videosunu eleriz.
+    """
+    text_to_check = (video_url + " " + " ".join(tags)).lower()
+    
+    for banned in BANNED_TERMS:
+        if banned in text_to_check:
+            print(f"🚫 Yasaklı video engellendi: {banned}")
+            return False
+    return True
+
+# --- VİDEO KAYNAKLARI ---
 def fetch_pexels_video(query):
     headers = {"Authorization": PEXELS_API_KEY}
     try:
-        # Sorguyu daha da korkutucu hale getiriyoruz
-        search_query = f"{query} scary horror cinematic dark atmosphere"
-        url = f"https://api.pexels.com/videos/search?query={search_query}&per_page=3&orientation=portrait"
+        # Daha fazla sonuç iste (per_page=15) ki içinden eleme yapabilelim
+        search_query = f"{query} dark horror cinematic"
+        url = f"https://api.pexels.com/videos/search?query={search_query}&per_page=15&orientation=portrait"
         data = requests.get(url, headers=headers, timeout=5).json()
+        
         videos = data.get("videos", [])
         if videos:
+            random.shuffle(videos) # Hep ilk sıradakini alma
             for v in videos:
+                # 1. KALİTE KONTROL (URL ve TAGS)
+                video_url = v.get("url", "")
+                video_tags = v.get("tags", [])
+                
+                if not is_safe_video(video_url, video_tags):
+                    continue # Yasaklıysa sonraki videoya geç
+
+                # 2. TEKNİK KONTROL
                 files = v.get("video_files", [])
                 suitable = [f for f in files if f["width"] >= 600]
                 if suitable:
@@ -120,15 +160,22 @@ def fetch_pexels_video(query):
 def fetch_pixabay_video(query):
     try:
         if not PIXABAY_API_KEY: return None
-        # Sorguyu güçlendir
-        search_query = f"{query} scary horror dark creepy"
-        url = f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}&q={search_query}&video_type=film&per_page=3" 
+        search_query = f"{query} dark"
+        url = f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}&q={search_query}&video_type=film&per_page=15" 
         data = requests.get(url, timeout=5).json()
         hits = data.get("hits", [])
         if hits:
-            hit = random.choice(hits)
-            if "large" in hit["videos"]: return hit["videos"]["large"]["url"]
-            if "medium" in hit["videos"]: return hit["videos"]["medium"]["url"]
+            random.shuffle(hits)
+            for hit in hits:
+                # 1. KALİTE KONTROL (URL ve TAGS)
+                video_url = hit.get("pageURL", "")
+                video_tags = hit.get("tags", "")
+                
+                if not is_safe_video(video_url, [video_tags]):
+                    continue
+
+                if "large" in hit["videos"]: return hit["videos"]["large"]["url"]
+                if "medium" in hit["videos"]: return hit["videos"]["medium"]["url"]
     except: pass
     return None
 
@@ -137,16 +184,15 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # --- SES (V37 AYARLARI - 0.5s ES) ---
+    # --- SES (V37 - SIKI MOD) ---
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
-    
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_script.save("script.mp3")
     
     hook_audio = AudioFileClip("hook.mp3")
     script_audio = AudioFileClip("script.mp3")
-    silence = AudioClip(lambda t: [0, 0], duration=0.5, fps=44100)
+    silence = AudioClip(lambda t: [0, 0], duration=0.5, fps=44100) # +TTS = ~1.5s
     
     final_audio = concatenate_audioclips([hook_audio, silence, script_audio])
     final_audio.write_audiofile("voice.mp3")
@@ -158,7 +204,7 @@ async def generate_resources(content):
 
     audio = AudioFileClip("voice.mp3")
     
-    # --- GÖRSEL ARAMA DÖNGÜSÜ ---
+    # --- GÖRSEL ARAMA ---
     paths = []
     used_links = set()
     
@@ -166,6 +212,7 @@ async def generate_resources(content):
         if len(paths) * 2.5 > audio.duration: break
         
         video_link = None
+        # Rastgele Pexels veya Pixabay dene
         if random.random() > 0.5:
             video_link = fetch_pixabay_video(query)
             if not video_link: video_link = fetch_pexels_video(query)
@@ -173,6 +220,10 @@ async def generate_resources(content):
             video_link = fetch_pexels_video(query)
             if not video_link: video_link = fetch_pixabay_video(query)
             
+        # Eğer spesifik video bulunamadıysa YEDEK LİSTEDEN al
+        if not video_link:
+             video_link = random.choice(FALLBACK_HORROR_VIDEOS)
+
         if video_link and video_link not in used_links:
             try:
                 path = f"clip_{len(paths)}.mp4"
@@ -187,10 +238,12 @@ async def generate_resources(content):
             except:
                 if os.path.exists(path): os.remove(path)
     
-    # Dolgu
+    # Yeterli video yoksa dolgu yap
     while len(paths) * 2.0 < audio.duration:
-        fillers = ["scary dark atmosphere", "creepy shadow movement", "horror cinematic background"]
-        video_link = fetch_pexels_video(random.choice(fillers))
+        # Dolgu için de yasaklı kelime filtresi geçerli olan fonksiyonları kullanıyoruz
+        video_link = fetch_pexels_video("abstract horror dark texture")
+        if not video_link: video_link = random.choice(FALLBACK_HORROR_VIDEOS)
+
         if video_link and video_link not in used_links:
             path = f"clip_{len(paths)}.mp4"
             with open(path, "wb") as f:
@@ -262,7 +315,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v41_atmospheric_visuals.mp4"
+        out = "horror_v42_quality_control.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -281,7 +334,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAtmosferik Görsel Modu (V41)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKalite Kontrol Modu (V42)...")
         
         content = get_content(topic)
         
@@ -289,7 +342,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🧠 Detaylı Sorgular: {content['visual_queries'][0]}, {content['visual_queries'][1]}...\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🚫 'Mutlu' videolar engelleniyor.\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
