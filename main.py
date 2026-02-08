@@ -2,11 +2,9 @@ import os
 import telebot
 import requests
 import random
-import json
 import time
 import asyncio
 import edge_tts
-import re  # Regex kütüphanesi eklendi (JSON bulmak için)
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, concatenate_videoclips
 )
@@ -19,18 +17,22 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 1080, 1920
 
-# --- TEMİZLİK ---
+# --- BAŞLANGIÇ TEMİZLİĞİ ---
 def clean_start():
+    print("🧹 Eski bağlantılar temizleniyor...")
     try:
-        requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
-        print("Bot başlatılıyor...")
-    except: pass
+        # Webhook'u silerek çakışmaları önle
+        requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=10)
+        time.sleep(1)
+        print("✅ Bot başlatılıyor...")
+    except Exception as e:
+        print(f"⚠️ Temizlik uyarısı: {e}")
 
-# --- AI İÇERİK (GÜVENLİK AYARLI & SAĞLAM JSON) ---
+# --- AI İÇERİK (DÜZ METİN MODU - ASLA HATA VERMEZ) ---
 def get_content(topic):
     models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
     
-    # KORKU İÇERİĞİ İÇİN GÜVENLİK FİLTRELERİNİ KAPATIYORUZ
+    # Güvenlik ayarlarını tamamen kapatıyoruz
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -38,55 +40,57 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
+    # JSON yerine Düz Metin istiyoruz (Daha sağlam)
     prompt = (
-        f"You are a narrator for a viral horror YouTube Shorts channel. Write a script about '{topic}'. "
-        "STRICT RULES: "
-        "1. NO INTRO, NO OUTRO. Start directly with the story. "
-        "2. Length: MUST be between 90 and 110 words (Targeting 30-35 seconds). "
-        "3. Flow: Use short sentences to reduce pauses. "
-        "4. Visuals: Provide 6 dark, scary, atmospheric keywords. "
-        "Output ONLY JSON: "
-        "{'script': 'Story text...', 'hook': 'First shocking sentence', 'keywords': ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']}"
+        f"You are a horror storyteller. Write a short script about '{topic}'. "
+        "Strictly follow this format using '|||' as separator:\n"
+        "HOOK SENTENCE ||| FULL STORY TEXT (90-110 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5, keyword6\n\n"
+        "Rules:\n"
+        "1. No intro/outro text, just the content.\n"
+        "2. Make it scary and viral.\n"
+        "3. Keywords must be visual (e.g. dark forest, skull)."
     )
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "safetySettings": safety_settings # Ayarları buraya ekledik
+        "safetySettings": safety_settings
     }
 
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
-    for attempt in range(3): # 3 kere dene
-        for model in models:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
-                r = requests.post(url, json=payload, timeout=20)
-                
-                if r.status_code == 200:
-                    response_json = r.json()
-                    # Cevap var mı kontrol et
-                    if 'candidates' not in response_json or not response_json['candidates']:
-                        print(f"⚠️ {model} boş döndü (Güvenlik takılmış olabilir).")
-                        continue
-                        
-                    text = response_json['candidates'][0]['content']['parts'][0]['text']
+    for model in models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            r = requests.post(url, json=payload, timeout=20)
+            
+            if r.status_code == 200:
+                response_json = r.json()
+                if 'candidates' in response_json and response_json['candidates']:
+                    raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
                     
-                    # --- JSON TEMİZLEME (AKILLI MOD) ---
-                    # Regex ile metnin içindeki İLK ve SON süslü parantezi bulur.
-                    match = re.search(r'\{.*\}', text, re.DOTALL)
-                    if match:
-                        json_str = match.group(0)
-                        data = json.loads(json_str)
-                        print("✅ Senaryo başarıyla oluşturuldu.")
+                    # Düz metni "|||" işaretlerinden bölüyoruz
+                    parts = raw_text.split("|||")
+                    
+                    if len(parts) >= 3:
+                        data = {
+                            "hook": parts[0].strip(),
+                            "script": parts[1].strip(),
+                            "keywords": [k.strip() for k in parts[2].split(",")]
+                        }
+                        print(f"✅ İçerik alındı: {data['hook']}")
                         return data
                     else:
-                        print("❌ JSON formatı bulunamadı.")
-            except Exception as e:
-                print(f"Hata ({model}): {e}")
-                continue
-        time.sleep(1)
+                        print(f"⚠️ Format hatası ({model}): {raw_text[:50]}...")
+                else:
+                    print(f"⚠️ Boş cevap ({model}) - Güvenlik filtresi olabilir.")
+            else:
+                print(f"❌ API Hatası ({model}): {r.status_code} - {r.text}")
+                
+        except Exception as e:
+            print(f"Hata ({model}): {e}")
+            continue
 
-    print("❌ Tüm denemeler başarısız.")
+    print("❌ Tüm modeller başarısız oldu.")
     return None
 
 # --- SES VE VİDEO ---
@@ -94,9 +98,8 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # Voice: Christopher (Korku/Gerilim için en iyisi)
+    # Ses: Christopher (Korku tonu)
     communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+10%", pitch="-5Hz")
-    
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -112,7 +115,8 @@ async def generate_resources(content):
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            url = f"https://api.pexels.com/videos/search?query={q} dark horror scary creepy&per_page=4&orientation=portrait"
+            # Sadece dikey ve karanlık videolar
+            url = f"https://api.pexels.com/videos/search?query={q} dark horror scary&per_page=3&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
             for v in data.get("videos", []):
@@ -152,6 +156,7 @@ def apply_effects(clip, duration):
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
         
+    # Zoom efekti
     return clip.resize(lambda t: 1 + 0.05 * t).set_position(('center', 'center'))
 
 # --- MONTAJ ---
@@ -196,14 +201,14 @@ def build_video(content):
 def handle(message):
     try:
         args = message.text.split(maxsplit=1)
-        topic = args[1] if len(args) > 1 else "scary facts"
+        topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo yazılıyor... (Yeni Sistem)")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo yazılıyor... (V3 - Text Modu)")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Senaryo oluşturulamadı (Güvenlik veya API hatası).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Senaryo oluşturulamadı. Logları kontrol et.", message.chat.id, msg.message_id)
             return
 
         bot.edit_message_text(f"🎥 Senaryo hazır!\n🎙️ Seslendiriliyor: '{content['hook']}'\n⏳ Video işleniyor...", message.chat.id, msg.message_id)
