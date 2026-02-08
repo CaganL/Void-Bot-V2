@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V14: CERRAHİ KESİM - ULTRA KISA & NET) ---
+# --- AI İÇERİK (V15: FINAL SHORT SENTENCE RULE) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -39,19 +39,18 @@ def get_content(topic):
     ]
 
     # PROMPT GÜNCELLEMESİ:
-    # 1. Kelime Sayısı: 50-60 (Çok sıkı limit).
-    # 2. "Remove Fluff": Gereksiz kelimeler (the, a, an) atılacak.
-    # 3. Hook: "Personal & Aggressive" (Benim laptopum...).
+    # Arkadaşının önerisi eklendi: "SENTENCES: Max 8 words."
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| PERSONAL HOOK (Max 8 words, e.g., 'My laptop...') ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "SHORT TITLE (Max 5 words) ||| PERSONAL HOOK (Max 8 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
         "CRITICAL RULES:\n"
         "1. LENGTH: STRICTLY 50-60 words. Must fit in 28 seconds.\n"
-        "2. STYLE: Ultra-concise. Drop articles where possible (e.g., 'I hear clicks' instead of 'I hear the clicks').\n"
-        "3. POV: First person ('I'). No visual notes.\n"
-        "4. ENDING: Sudden physical pain or shock (e.g., 'It smashed my hand').\n"
-        "5. PACING: Fast action. No long descriptions."
+        "2. STYLE: Ultra-concise. Drop articles (the, a, an). Example: 'I hear clicks', not 'I hear the clicks'.\n"
+        "3. STRUCTURE: Max 8 words per sentence. Easy to read subtitles.\n"
+        "4. POV: First person ('I'). No visual notes like '(Pause)' or '[Scene]'.\n"
+        "5. ENDING: Sudden physical pain or shock (e.g., 'It smashed my hand').\n"
+        "6. PACING: Fast action. No long descriptions."
     )
     
     payload = {
@@ -95,9 +94,7 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # SES AYARI:
-    # Rate: +0% (Normal hız - Yavaşlık kalktı, süre kısaldı)
-    # Pitch: -5Hz (Korku tonu korunuyor)
+    # Ses: +0% (Normal Hız) ve -5Hz (Korku Tonu)
     communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+0%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
@@ -106,7 +103,6 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
-    # Klip sayısı audio süresine göre dinamik
     required_clips = int(audio.duration / 2.0) + 4
     search_terms = keywords * 4
     random.shuffle(search_terms)
@@ -114,7 +110,6 @@ async def generate_resources(content):
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            # GÖRSEL ARAMA: Laptop/Teknoloji korkusu için "glitch" ekledik
             query_enhanced = f"{q} horror scary close up pov dark cinematic glitch"
             url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=5&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
@@ -188,7 +183,7 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                # TEMPO: Hızlı ve dinamik (2.0 - 2.8 saniye)
+                # TEMPO: 2.0 - 2.8 saniye (Hızlı)
                 dur = random.uniform(2.0, 2.8)
                 processed = apply_processing(c, dur)
                 clips.append(processed)
@@ -201,7 +196,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_surgical_v14.mp4"
+        out = "horror_final_v15.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -220,7 +215,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nCerrahi Kesim Modu (28sn Hedef)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nÜretim Hattı Devrede (V15 Final)...")
         
         content = get_content(topic)
         
@@ -228,7 +223,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n✂️ Kelimeler azaltıldı, tempo artırıldı...\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 {content['title']}\n📝 Max 8 kelime/cümle kuralı uygulandı.\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
