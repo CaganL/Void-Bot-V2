@@ -5,8 +5,9 @@ import random
 import time
 import asyncio
 import edge_tts
+import numpy as np
 from moviepy.editor import (
-    VideoFileClip, AudioFileClip, concatenate_videoclips
+    VideoFileClip, AudioFileClip, concatenate_videoclips, vfx
 )
 
 # --- AYARLAR ---
@@ -15,7 +16,9 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
-W, H = 1080, 1920
+
+# Çözünürlük 720p (Hem kaliteli hem sunucuyu yormaz)
+W, H = 720, 1280
 
 # --- BAŞLANGIÇ TEMİZLİĞİ ---
 def clean_start():
@@ -27,15 +30,13 @@ def clean_start():
     except Exception as e:
         print(f"⚠️ Temizlik uyarısı: {e}")
 
-# --- AI İÇERİK (SENİN MODELLERİNE ÖZEL LİSTE) ---
+# --- AI İÇERİK ---
 def get_content(topic):
-    # LİSTE GÜNCELLENDİ: Senin API'nin desteklediği en iyi modeller
-    # Öncelik: Lite modeller (Hızlı ve Kotayı az yer)
     models = [
-        "gemini-2.5-flash-lite",      # En yeni ve en hızlısı
-        "gemini-2.0-flash-lite",      # Çok sağlam yedek
-        "gemini-2.5-flash",           # Yüksek kalite
-        "gemini-flash-latest"         # Genel son sürüm
+        "gemini-2.5-flash-lite", 
+        "gemini-2.0-flash-lite", 
+        "gemini-flash-latest",
+        "gemini-2.5-flash"
     ]
     
     safety_settings = [
@@ -45,14 +46,15 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
+    # Hook kısmını daha kısa ve vurucu olması için güncelledim
     prompt = (
-        f"You are a horror storyteller. Write a short script about '{topic}'. "
+        f"You are a master of horror shorts. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "HOOK SENTENCE ||| FULL STORY TEXT (90-110 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5, keyword6\n\n"
+        "PUNCHY HOOK (Max 10 words, shocking statement) ||| FULL STORY TEXT (90-110 words) ||| atmospheric_keyword1, atmospheric_keyword2, atmospheric_keyword3, atmospheric_keyword4, atmospheric_keyword5\n\n"
         "Rules:\n"
-        "1. No intro/outro text, just the content.\n"
-        "2. Make it scary and viral.\n"
-        "3. Keywords must be visual (e.g. dark forest, skull)."
+        "1. Hook must be clickbait and scary. No poetic language.\n"
+        "2. Story must be fast-paced.\n"
+        "3. Keywords must search for atmosphere: e.g., 'foggy forest', 'abandoned hallway', 'creepy shadow movement'."
     )
     
     payload = {
@@ -64,13 +66,10 @@ def get_content(topic):
 
     for model in models:
         try:
-            # Senin listendeki 'models/' ön ekini API URL'sine düzgünce yerleştiriyoruz
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
             r = requests.post(url, json=payload, timeout=20)
             
-            # KOTA HATASI (429) -> Bekle ve diğer modele geç
             if r.status_code == 429:
-                print(f"⏳ Kota dolu ({model}), Lite modele geçiliyor...")
                 time.sleep(2)
                 continue
 
@@ -86,23 +85,14 @@ def get_content(topic):
                             "script": parts[1].strip(),
                             "keywords": [k.strip() for k in parts[2].split(",")]
                         }
-                        print(f"✅ İçerik alındı ({model}): {data['hook']}")
+                        print(f"✅ İçerik alındı ({model})")
                         return data
-            else:
-                # 404 vs alırsa loga yaz ama devam et
-                print(f"⚠️ Model hatası ({model}): {r.status_code}")
+        except: continue
 
-        except Exception as e:
-            print(f"Bağlantı hatası ({model}): {e}")
-            continue
-
-    print("❌ Tüm modeller başarısız. ACİL DURUM (FailSafe) devreye giriyor.")
-    
-    # --- ACİL DURUM SENARYOSU ---
     return {
-        "hook": "DO NOT LOOK BEHIND YOU",
-        "script": "Whatever you do, do not turn around right now. They say that spirits usually stand in the corner of the room, waiting for you to notice them. But the dangerous ones? They stand right behind your back. If you feel a sudden chill on your neck, or if the hair on your arms stands up, it is already too late. Just keep looking at your screen. Pretend you don't know they are there.",
-        "keywords": ["dark shadow", "mirror reflection", "creepy face", "ghost", "dark room", "fear"]
+        "hook": "NEVER LOOK IN THE MIRROR AT 3AM",
+        "script": "You think it's just a superstition. Until you wake up thirsty in the middle of the night. You walk past the bathroom mirror. Out of the corner of your eye, your reflection blinks when you didn't. You stop. You look closely. It smiles, showing too many teeth. Don't scream. It hates loud noises.",
+        "keywords": ["creepy mirror reflection", "dark bathroom horror", "shadow figure", "scary face"]
     }
 
 # --- MEDYA OLUŞTURMA ---
@@ -110,7 +100,6 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # Seslendirme: Christopher (Korku tonu)
     communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+10%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
@@ -118,7 +107,7 @@ async def generate_resources(content):
     headers = {"Authorization": PEXELS_API_KEY}
     paths = []
     
-    required_clips = int(audio.duration / 2.5) + 4
+    required_clips = int(audio.duration / 2.5) + 3
     search_terms = keywords * 3
     random.shuffle(search_terms)
 
@@ -127,8 +116,9 @@ async def generate_resources(content):
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            # Sadece dikey ve karanlık videolar
-            url = f"https://api.pexels.com/videos/search?query={q} dark horror scary&per_page=3&orientation=portrait"
+            # Arama terimlerini daha atmosferik hale getirdik
+            query_enhanced = f"{q} cinematic moody dark atmospheric"
+            url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=3&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
             for v in data.get("videos", []):
@@ -136,7 +126,7 @@ async def generate_resources(content):
                 files = v.get("video_files", [])
                 if not files: continue
                 
-                suitable = [f for f in files if f["width"] >= 720 and f["width"] < 2500]
+                suitable = [f for f in files if f["width"] >= 600 and f["width"] < 2500]
                 if not suitable: suitable = files
                 link = sorted(suitable, key=lambda x: x["height"], reverse=True)[0]["link"]
                 
@@ -146,7 +136,8 @@ async def generate_resources(content):
                 
                 try:
                     c = VideoFileClip(path)
-                    if c.duration > 1.0: paths.append(path)
+                    if c.duration > 1.5: # Çok kısa glitch videoları eledik
+                        paths.append(path)
                     c.close()
                 except:
                     if os.path.exists(path): os.remove(path)
@@ -154,12 +145,36 @@ async def generate_resources(content):
         
     return paths, audio
 
-# --- EFEKTLER ---
-def apply_effects(clip, duration):
+# --- GÖRSEL EFEKTLER (SOĞUK & SOLUK RENK PALETİ) ---
+def cold_horror_grade(image):
+    """
+    Görüntüyü alır, renklerini soldurur ve soğuk (mavi) bir ton ekler.
+    """
+    # Görüntüyü float'a çevir (işlem doğruluğu için)
+    img_f = image.astype(float)
+    
+    # 1. Desaturation (Renkleri Soldurma - %70)
+    # Gri tonlamalı versiyonu bul
+    gray = np.mean(img_f, axis=2, keepdims=True)
+    # Orijinal ile griyi karıştır. 0.3 canlılık, 0.7 grilik.
+    desaturated = img_f * 0.3 + gray * 0.7
+
+    # 2. Soğukluk (Cold Tint)
+    # R(Kırmızı) kanalını azalt, B(Mavi) kanalını artır. G(Yeşil) sabit kalsın.
+    # [R çarpanı, G çarpanı, B çarpanı]
+    tint_matrix = np.array([0.85, 1.0, 1.15])
+    cold_img = desaturated * tint_matrix
+
+    # Değerleri 0-255 arasına sıkıştır ve tekrar resim formatına çevir
+    return np.clip(cold_img, 0, 255).astype(np.uint8)
+
+def apply_processing(clip, duration):
+    # Süre Kırpma
     if clip.duration > duration:
         start = random.uniform(0, clip.duration - duration)
         clip = clip.subclip(start, start + duration)
     
+    # 9:16 Kadrajlama
     target_ratio = W / H
     if clip.w / clip.h > target_ratio:
         clip = clip.resize(height=H)
@@ -168,7 +183,17 @@ def apply_effects(clip, duration):
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
         
-    return clip.resize(lambda t: 1 + 0.05 * t).set_position(('center', 'center'))
+    # --- RENK EFEKTLERİNİ UYGULA ---
+    # 1. Kontrastı Artır (Gölgeler daha koyu)
+    clip = clip.fx(vfx.lum_contrast, contrast=0.3)
+    
+    # 2. Soğuk ve Soluk Filtreyi Uygula (NumPy ile)
+    clip = clip.fl_image(cold_horror_grade)
+
+    # 3. Hafif Zoom (Durağanlığı kırmak için geri geldi, çok yavaş)
+    clip = clip.resize(lambda t: 1 + 0.02 * t).set_position(('center', 'center'))
+    
+    return clip
 
 # --- MONTAJ ---
 def build_video(content):
@@ -183,8 +208,8 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                dur = random.uniform(2.0, 3.5)
-                processed = apply_effects(c, dur)
+                dur = random.uniform(2.5, 4.0) # Biraz daha uzun sahneler
+                processed = apply_processing(c, dur)
                 clips.append(processed)
                 cur_dur += processed.duration
             except: continue
@@ -195,8 +220,9 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_final.mp4"
-        final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="4500k", audio_bitrate="192k", threads=4, logger=None)
+        out = "horror_final_graded.mp4"
+        # Preset: veryfast (Renk işlemi olduğu için ultrafast bazen bozar)
+        final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
         for c in clips: c.close()
@@ -214,16 +240,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        # Kullanıcıya hangi konuyu seçtiğini göster
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo yazılıyor... (Model: 2.5 Flash Lite)")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo hazırlanıyor... (Sinematik Mod)")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Kritik hata: Hiçbir model yanıt vermedi.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎥 Senaryo: {content['hook']}\n⏳ Video işleniyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 Hook: {content['hook']}\n🎨 Renkler solduruluyor ve soğutuluyor...\n⏳ Video işleniyor...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -234,12 +259,12 @@ def handle(message):
             with open(path, "rb") as v:
                 bot.send_video(message.chat.id, v, caption=caption)
         else:
-            bot.edit_message_text("❌ Video render hatası.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Video render edilemedi (RAM hatası olabilir).", message.chat.id, msg.message_id)
             
     except Exception as e:
         bot.reply_to(message, str(e))
 
 if __name__ == "__main__":
     clean_start()
-    print("🚀 Bot aktif! /horror komutu bekleniyor.")
+    print("🚀 Bot aktif! Sinematik korku modu devrede.")
     bot.polling(non_stop=True)
