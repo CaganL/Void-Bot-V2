@@ -7,7 +7,7 @@ import asyncio
 import edge_tts
 import numpy as np
 from moviepy.editor import (
-    VideoFileClip, AudioFileClip, concatenate_videoclips, vfx
+    VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips, AudioClip
 )
 
 # --- AYARLAR ---
@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V32: SESLİ HOOK & OPTİMİZE SÜRE) ---
+# --- AI İÇERİK (V33: KESKİN ZAMANLAMA) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -38,17 +38,14 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT GÜNCELLEMESİ:
-    # 1. Script Length: 55-65 Kelime (Çünkü Hook eklenecek, süre artmasın diye kısalttık).
-    # 2. Hook: Seslendirileceği için çok vurucu olmalı.
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
         "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words. Shocking statement.) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 words) ||| #tag1 #tag2 #tag3 #tag4 #tag5\n\n"
         "CRITICAL RULES (Target 30 Seconds Total):\n"
-        "1. LENGTH: NARRATION must be 55-65 words. (We will add the Hook to the audio, so keep the story tight).\n"
-        "2. HOOK: This will be spoken first. Make it scary. (e.g., 'Don't look under your bed.').\n"
-        "3. PACING: Use commas for flow.\n"
+        "1. LENGTH: NARRATION must be 55-65 words.\n"
+        "2. HOOK: Spoken first. Make it scary.\n"
+        "3. PACING: Flowing narration.\n"
         "4. CLIMAX: Visceral physical shock.\n"
         "5. TAGS: Specific hashtags."
     )
@@ -99,13 +96,35 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["search_keywords"]
     
-    # --- KRİTİK GÜNCELLEME: HOOK + SCRIPT BİRLEŞİMİ ---
-    # Hook'u başa alıyoruz ve araya "..." koyuyoruz ki Christopher biraz essin.
-    full_audio_text = f"{hook}... {script}"
+    # --- KRİTİK GÜNCELLEME: AYRI AYRI SESLENDİRME ---
+    # Hook ve Hikayeyi ayrı ayrı seslendirip biz birleştireceğiz.
+    # Bu sayede aradaki boşluğu milimetrik ayarlayabiliriz.
     
-    # SES AYARI: -5% Hız
-    communicate = edge_tts.Communicate(full_audio_text, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
-    await communicate.save("voice.mp3")
+    # 1. Hook Seslendirmesi
+    communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
+    await communicate_hook.save("hook.mp3")
+    
+    # 2. Hikaye Seslendirmesi
+    communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
+    await communicate_script.save("script.mp3")
+    
+    # 3. Sesleri Birleştir (MoviePy ile)
+    hook_audio = AudioFileClip("hook.mp3")
+    script_audio = AudioFileClip("script.mp3")
+    
+    # --- İŞTE O SİHİRLİ 1.5 SANİYE ---
+    # Tamamen sessiz bir klip oluşturuyoruz
+    silence = AudioClip(lambda t: [0, 0], duration=1.5, fps=44100)
+    
+    final_audio = concatenate_audioclips([hook_audio, silence, script_audio])
+    final_audio.write_audiofile("voice.mp3")
+    
+    # Temizlik (Ara dosyalar)
+    hook_audio.close()
+    script_audio.close()
+    if os.path.exists("hook.mp3"): os.remove("hook.mp3")
+    if os.path.exists("script.mp3"): os.remove("script.mp3")
+
     audio = AudioFileClip("voice.mp3")
     
     headers = {"Authorization": PEXELS_API_KEY}
@@ -214,7 +233,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_voiced_hook_v32.mp4"
+        out = "horror_micro_tension_v33.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -233,7 +252,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSesli Kanca Modu (V32)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nMikro Gerilim Modu (V33)...")
         
         content = get_content(topic)
         
@@ -241,7 +260,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Hook: Seslendiriliyor.\n🏷️ SEO: Optimize.\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n⏱️ Hook + 1.5sn Es + Hikaye\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
