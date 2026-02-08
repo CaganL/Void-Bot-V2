@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V35: KULLANICI AYARLARI) ---
+# --- AI İÇERİK (V36: 50-60 KELİME & 1.5SN ES) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -39,14 +39,14 @@ def get_content(topic):
     ]
 
     # PROMPT AYARI:
-    # 1. Kelime: 65-75 (Senin isteğin).
-    # 2. Hook: Kısa ve çarpıcı.
+    # 1. Kelime: 50-60 (Matematiksel olarak 25-32sn toplam süre için şart).
+    # 2. Es: 1.5sn olduğu için hikaye hemen vurucu başlamalı.
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words. Shocking statement.) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (65-75 words) ||| #tag1 #tag2 #tag3 #tag4 #tag5\n\n"
-        "CRITICAL RULES:\n"
-        "1. LENGTH: NARRATION must be STRICTLY 65-75 words. Not less, not more.\n"
+        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words. Shocking statement.) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| #tag1 #tag2 #tag3 #tag4 #tag5\n\n"
+        "CRITICAL RULES (Target 25-32 Seconds Total):\n"
+        "1. LENGTH: STRICTLY 50-60 words. The video MUST be under 32 seconds including pause.\n"
         "2. HOOK: This is spoken first. Make it scary.\n"
         "3. PACING: Flowing narration. Use commas.\n"
         "4. CLIMAX: Visceral physical shock.\n"
@@ -113,8 +113,8 @@ async def generate_resources(content):
     hook_audio = AudioFileClip("hook.mp3")
     script_audio = AudioFileClip("script.mp3")
     
-    # --- ES SÜRESİ: TAM 2.0 SANİYE (SENİN İSTEĞİN) ---
-    silence = AudioClip(lambda t: [0, 0], duration=2.0, fps=44100)
+    # --- ES SÜRESİ: TAM 1.5 SANİYE (SENİN İSTEĞİN) ---
+    silence = AudioClip(lambda t: [0, 0], duration=1.5, fps=44100)
     
     final_audio = concatenate_audioclips([hook_audio, silence, script_audio])
     final_audio.write_audiofile("voice.mp3")
@@ -232,7 +232,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v35_user_choice.mp4"
+        out = "horror_v36_precision.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -251,7 +251,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKullanıcı Ayarları (V35)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHassas Kesim Modu (V36)...")
         
         content = get_content(topic)
         
@@ -259,7 +259,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n⏱️ Hook + 2.0sn Es + 65-75 Kelime\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n⏱️ Hedef: 25-32 Saniye\n✂️ 50-60 Kelime\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
