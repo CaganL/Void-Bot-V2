@@ -8,3 +8,5 @@ imageio==2.9.0
 imageio-ffmpeg
 decorator==4.4.2
 gTTS
+beautifulsoup4
+requests
