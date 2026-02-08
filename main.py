@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V10: PSİKOLOJİK GERİLİM & SAKİN SES) ---
+# --- AI İÇERİK (V11: HİBRİT MOD - BASİT DİL & ATMOSFERİK HOOK) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -39,18 +39,19 @@ def get_content(topic):
     ]
 
     # PROMPT GÜNCELLEMESİ:
-    # 1. Kelime sayısı 65-80'e indi (Çünkü ses yavaşladı).
-    # 2. Keywords kısmına "static", "slow", "creepy" zorunluluğu geldi.
+    # 1. Dil: Tekrar "Simple English (A2)" ve "Short Sentences" moduna döndük.
+    # 2. Hook: Somut ve net olacak.
+    # 3. Görsel Keywordler: "Close-up", "Face", "Eye" gibi detay odaklı olacak.
     prompt = (
-        f"You are a master of psychological horror shorts. Write a script about '{topic}'. "
+        f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| CONCRETE HOOK (Max 8 words, No questions) ||| SEO DESCRIPTION ||| FULL STORY TEXT (65-80 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
-        "CRITICAL RULES:\n"
-        "1. VISUALS: Keywords MUST be about ATMOSPHERE (e.g., 'dark empty room', 'shadow on wall', 'sleeping person'). NO ACTION keywords.\n"
-        "2. HOOK: Concrete observation of something wrong.\n"
-        "3. PACING: Slow burn. Creeping dread.\n"
-        "4. ENDING: Physical, uncomfortable interaction.\n"
-        "5. LENGTH: 65-80 words (Compensating for slower TTS)."
+        "SHORT TITLE (Max 5 words) ||| CONCRETE HOOK (Max 8 words) ||| SEO DESCRIPTION ||| FULL STORY TEXT (80-90 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "CRITICAL RULES FOR VIRAL SHORTS:\n"
+        "1. LANGUAGE: Simple English (A2 Level). NO complex words. Short sentences (Max 7 words).\n"
+        "2. PACING: Fast but scary. Start with action immediately.\n"
+        "3. VISUALS: Keywords must be specific: 'close up eye', 'scary face', 'mirror reflection', 'dark figure'.\n"
+        "4. ENDING: Must end with a sudden PHYSICAL ACTION (e.g., 'He touched me').\n"
+        "5. LENGTH: Strictly 80-90 words (Targeting 28 seconds)."
     )
     
     payload = {
@@ -94,10 +95,10 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # --- SES AYARI (KRİTİK) ---
-    # Rate: -10% (Daha yavaş, tane tane, hikaye anlatıcısı modu)
-    # Pitch: -5Hz (Hafif kalın ve ciddi)
-    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-10%", pitch="-5Hz")
+    # SES AYARI:
+    # Rate: +0% (Normal hız - Ne çok hızlı ne çok yavaş, tam kıvamında)
+    # Pitch: -5Hz (Korku tonu sabit)
+    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+0%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -105,17 +106,16 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
-    required_clips = int(audio.duration / 3.0) + 3 # Sahneler biraz daha uzun kalsın (3sn)
+    # Klip süresini kısalttığımız için daha fazla klibe ihtiyacımız var (Audio / 2.5)
+    required_clips = int(audio.duration / 2.0) + 4
     search_terms = keywords * 4
     random.shuffle(search_terms)
 
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            # --- GÖRSEL ARAMA AYARI (KRİTİK) ---
-            # "Action", "Run" gibi kelimeler yerine atmosferik kelimeler ekliyoruz.
-            query_enhanced = f"{q} creepy slow motion dark pov atmospheric shadow silent"
-            
+            # GÖRSEL ARAMA: "Close up" ve "POV" ekledik
+            query_enhanced = f"{q} horror scary close up pov dark cinematic"
             url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=5&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
@@ -138,8 +138,7 @@ async def generate_resources(content):
                 
                 try:
                     c = VideoFileClip(path)
-                    # Çok kısa videoları alma, atmosfer bozulmasın
-                    if c.duration > 2.0:
+                    if c.duration > 1.0:
                         paths.append(path)
                         used_links.add(video_url)
                     c.close()
@@ -153,8 +152,8 @@ async def generate_resources(content):
 def cold_horror_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
-    desaturated = img_f * 0.3 + gray * 0.7 # Renkleri daha da öldürdük (%30 renk)
-    tint_matrix = np.array([0.9, 1.0, 1.15]) # Daha soğuk mavi
+    desaturated = img_f * 0.4 + gray * 0.6 
+    tint_matrix = np.array([0.9, 1.0, 1.1])
     cold_img = desaturated * tint_matrix
     return np.clip(cold_img, 0, 255).astype(np.uint8)
 
@@ -171,11 +170,11 @@ def apply_processing(clip, duration):
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
         
-    clip = clip.fx(vfx.lum_contrast, contrast=0.25) # Kontrast bir tık arttı
+    clip = clip.fx(vfx.lum_contrast, contrast=0.2)
     clip = clip.fl_image(cold_horror_grade)
     
-    # Zoom çok çok yavaş (Static hissi vermek için)
-    clip = clip.resize(lambda t: 1 + 0.01 * t).set_position(('center', 'center'))
+    # Zoom yine var ama çok hafif
+    clip = clip.resize(lambda t: 1 + 0.02 * t).set_position(('center', 'center'))
     return clip
 
 # --- MONTAJ ---
@@ -191,8 +190,10 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                # Klipler biraz daha uzun kalsın ki "izleme/gözetleme" hissi olsun
-                dur = random.uniform(3.0, 4.5)
+                
+                # TEMPO AYARI: 2.0 ile 3.0 saniye arası (Hızlı Kesimler)
+                dur = random.uniform(2.0, 3.0)
+                
                 processed = apply_processing(c, dur)
                 clips.append(processed)
                 cur_dur += processed.duration
@@ -204,7 +205,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_psychological_v10.mp4"
+        out = "horror_hybrid_v11.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -223,7 +224,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo: V10 (Psikolojik Gerilim)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSenaryo: V11 (Hibrit Viral Mod)...")
         
         content = get_content(topic)
         
@@ -231,7 +232,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 Başlık: {content['title']}\n🎙️ Ses: Yavaş & Tekinsiz\n⏳ İşleniyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 Başlık: {content['title']}\n⚡ Hızlı Kesimler & Yakın Çekimler...\n⏳ İşleniyor...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
