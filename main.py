@@ -10,13 +10,12 @@ from moviepy.editor import (
     VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips, AudioClip
 )
 
-# BS4 Korumalı
+# BS4 Koruması
 try:
     from bs4 import BeautifulSoup
     BS4_AVAILABLE = True
 except ImportError:
     BS4_AVAILABLE = False
-    print("⚠️ UYARI: beautifulsoup4 yüklü değil!")
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -30,16 +29,16 @@ W, H = 720, 1280
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- ACİL DURUM STOKLARI ---
-# Gemini tek kelime verirse burayı kullanacağız
-EMERGENCY_KEYWORDS = [
-    "dark room", "shadow on wall", "creepy window", "floor", 
-    "door handle", "mirror reflection", "flickering light", 
-    "scary eyes", "pale hand", "broken glass", "stairs", 
-    "dusty furniture", "moonlight", "candle", "corridor"
+# --- YASAKLI KELİMELER ---
+BANNED_TERMS = [
+    "happy", "smile", "laugh", "business", "corporate", "office", "working", 
+    "family", "couple", "romantic", "wedding", "party", "celebration", 
+    "wellness", "spa", "massage", "yoga", "relax", "calm", "bright", 
+    "sunny", "beach", "holiday", "vacation", "funny", "cute", "baby",
+    "shopping", "sale", "store", "market"
 ]
 
-# --- AI İÇERİK (V49: LİSTE ZORLAMA) ---
+# --- AI İÇERİK (V51: EYLEM ODAKLI ÇEVİRİ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -50,15 +49,19 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
+    # PROMPT DEĞİŞİKLİĞİ: "TRANSLATE SCENE TO STOCK KEYWORDS"
+    # Gemini'ye diyoruz ki: Cümleyi stok sitesinin anlayacağı 2-3 kelimelik özetlere çevir.
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| VISUAL_QUERIES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. VISUAL_QUERIES_LIST: You MUST provide 15 DIFFERENT search terms separated by commas. Do NOT provide just one word.\n"
-        "   - BAD: 'doll'\n"
-        "   - GOOD: 'doll, plastic face, glass eyes, shelf, dark room, shadow, hand, floor, toy, window, door'\n"
-        "   - USE SINGLE NOUNS mostly.\n"
+        "1. VISUAL_SCENES_LIST: Provide 15 SEARCH PHRASES. \n"
+        "   - **TASK:** Translate the sentence action into a stock video query.\n"
+        "   - IF Script says: 'Something is under my bed' -> QUERY: 'hand under bed'\n"
+        "   - IF Script says: 'I heard a knock' -> QUERY: 'knocking door'\n"
+        "   - IF Script says: 'The doll moved' -> QUERY: 'scary doll moving'\n"
+        "   - DO NOT write the full sentence. Write the SUBJECT + ACTION.\n"
         "2. LENGTH: Script must be 50-60 words.\n"
         "3. HOOK: Scary and spoken first. DO NOT REPEAT HOOK IN SCRIPT."
     )
@@ -85,21 +88,10 @@ def get_content(topic):
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
-                        # --- KRİTİK MÜDAHALE BURADA ---
+                        # Kelimeleri temizle
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
-                        # Eğer Gemini tembellik yapıp 5'ten az kelime verdiyse ÇOĞALT
-                        if len(visual_queries) < 5:
-                            print(f"⚠️ Gemini az kelime verdi ({len(visual_queries)} tane). Liste genişletiliyor...")
-                            # Konuyla ilgili kelimeleri ekle
-                            topic_words = topic.split()
-                            visual_queries.extend(topic_words)
-                            # Acil durum listesinden rastgele ekle
-                            random.shuffle(EMERGENCY_KEYWORDS)
-                            visual_queries.extend(EMERGENCY_KEYWORDS[:10])
-                        
-                        # Script temizliği
                         hook_text = parts[1].strip()
                         script_text = parts[3].strip()
                         if script_text.lower().startswith(hook_text.lower()):
@@ -114,17 +106,15 @@ def get_content(topic):
                             "tags": " ".join(valid_tags)
                         }
                         print(f"✅ İçerik alındı ({model})")
-                        print(f"🔍 Final Arama Listesi ({len(visual_queries)} adet): {visual_queries}")
+                        print(f"🔍 Sahne Çevirileri: {visual_queries}")
                         return data
         except: continue
 
     return None
 
 def is_safe_video(video_url, tags=[]):
-    # Yasaklı kelime kontrolü
-    BANNED = ["happy", "smile", "laugh", "business", "corporate", "office", "working", "family", "couple", "romantic", "wedding", "wellness", "spa", "massage", "yoga", "relax", "bright", "sunny", "beach", "funny", "cute"]
     text_to_check = (video_url + " " + " ".join(tags)).lower()
-    for b in BANNED:
+    for b in BANNED_TERMS:
         if b in text_to_check: return False
     return True
 
@@ -146,49 +136,66 @@ def search_mixkit(query):
 def search_pexels(query):
     headers = {"Authorization": PEXELS_API_KEY}
     try:
-        url = f"https://api.pexels.com/videos/search?query={query}&per_page=3&orientation=portrait"
+        # Pexels için "dark horror" ekle ama sorguyu bozma
+        enhanced_query = f"{query} dark horror"
+        url = f"https://api.pexels.com/videos/search?query={enhanced_query}&per_page=5&orientation=portrait"
         data = requests.get(url, headers=headers, timeout=5).json()
         videos = data.get("videos", [])
         if videos:
-            v = videos[0]
-            files = v.get("video_files", [])
-            suitable = [f for f in files if f["width"] >= 600]
-            if suitable:
-                return sorted(suitable, key=lambda x: x["height"], reverse=True)[0]["link"]
+            for v in videos:
+                if not is_safe_video(v.get("url", ""), v.get("tags", [])): continue
+                files = v.get("video_files", [])
+                suitable = [f for f in files if f["width"] >= 600]
+                if suitable:
+                    return sorted(suitable, key=lambda x: x["height"], reverse=True)[0]["link"]
     except: pass
     return None
 
 def search_pixabay(query):
     if not PIXABAY_API_KEY: return None
     try:
-        url = f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}&q={query}&video_type=film&per_page=3" 
+        enhanced_query = f"{query} horror"
+        url = f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}&q={enhanced_query}&video_type=film&per_page=5" 
         data = requests.get(url, timeout=5).json()
         hits = data.get("hits", [])
         if hits:
-            hit = hits[0]
-            if "large" in hit["videos"]: return hit["videos"]["large"]["url"]
-            if "medium" in hit["videos"]: return hit["videos"]["medium"]["url"]
+            for hit in hits:
+                if not is_safe_video(hit.get("pageURL", ""), [hit.get("tags", "")]): continue
+                if "large" in hit["videos"]: return hit["videos"]["large"]["url"]
+                if "medium" in hit["videos"]: return hit["videos"]["medium"]["url"]
     except: pass
     return None
 
-def sniper_search(query):
-    # Sırayla dene, bulursan dön
+# --- AKILLI "FALLBACK" SİSTEMİ ---
+def smart_scene_search(query):
+    """
+    1. Adım: Tam eylem cümlesini ara (örn: "hand under bed")
+    2. Adım: Bulamazsa basitleştir (örn: "under bed")
+    3. Adım: O da yoksa nesneyi ara (örn: "bed horror")
+    """
+    # 1. Tam Cümle
+    print(f"🔍 1. Deneme: {query}")
     link = search_mixkit(query)
+    if not link: link = search_pexels(query)
+    if not link: link = search_pixabay(query)
     if link: return link
-    
-    link = search_pexels(query)
-    if link: return link
-    
-    link = search_pixabay(query)
-    if link: return link
-    
-    # Kelimeyi basitleştirip tekrar dene
+
+    # 2. Kelime Eksiltme (Son 2 kelimeyi al: "hand under bed" -> "under bed")
     words = query.split()
-    if len(words) > 1:
-        simple_query = words[-1]
+    if len(words) > 2:
+        simple_query = " ".join(words[-2:])
+        print(f"⚠️ 2. Deneme (Basit): {simple_query}")
         link = search_pexels(simple_query)
+        if not link: link = search_pixabay(simple_query)
         if link: return link
-        
+
+    # 3. Sadece Son Nesne (En garantisi)
+    if len(words) > 0:
+        noun_query = words[-1] # "bed"
+        print(f"⚠️ 3. Deneme (Nesne): {noun_query}")
+        link = search_pexels(noun_query) # Zaten fonksiyon içinde "horror" ekleniyor
+        if link: return link
+
     return None
 
 # --- KAYNAK OLUŞTURMA ---
@@ -222,12 +229,11 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
-    # 1. ARAMA DÖNGÜSÜ
     for query in visual_queries:
         if current_duration >= total_duration: break
         
-        print(f"🔍 Aranıyor: {query}")
-        video_link = sniper_search(query)
+        # Akıllı sahne arama fonksiyonunu kullan
+        video_link = smart_scene_search(query)
         
         if video_link and video_link not in used_links:
             try:
@@ -243,18 +249,14 @@ async def generate_resources(content):
                 c.close()
             except:
                 if os.path.exists(path): os.remove(path)
-                
-    # 2. YEDEK DÖNGÜ (Eğer süre dolmadıysa)
-    # Listeyi karıştırıp tekrar dene
+
+    # LOOP
     loop_limit = 0
     while current_duration < total_duration:
-        if loop_limit > 5: break # Sonsuz döngü önleyici
-        
-        random.shuffle(EMERGENCY_KEYWORDS)
-        for keyword in EMERGENCY_KEYWORDS:
+        if loop_limit > 5: break
+        for query in visual_queries:
              if current_duration >= total_duration: break
-             
-             video_link = sniper_search(keyword)
+             video_link = smart_scene_search(f"{query} horror")
              if video_link and video_link not in used_links:
                 try:
                     path = f"clip_{len(paths)}.mp4"
@@ -275,7 +277,7 @@ def cold_horror_grade(image):
     desaturated = img_f * 0.3 + gray * 0.7 
     tint_matrix = np.array([0.8, 0.9, 1.0])
     cold_img = desaturated * tint_matrix
-    cold_img = cold_img * 0.7 # Darken
+    cold_img = cold_img * 0.6 
     return np.clip(cold_img, 0, 255).astype(np.uint8)
 
 def apply_processing(clip, duration):
@@ -308,9 +310,7 @@ def apply_processing(clip, duration):
 def build_video(content):
     try:
         paths, audio = asyncio.run(generate_resources(content))
-        if not paths: 
-            print("❌ Video bulunamadı.")
-            return None
+        if not paths: return None
             
         clips = []
         current_total_duration = 0.0
@@ -324,7 +324,6 @@ def build_video(content):
                 current_total_duration += processed.duration
             except: continue
 
-        # GARANTİ DÖNGÜSÜ
         while current_total_duration < audio.duration:
             random_clip = random.choice(clips).copy()
             random_clip = random_clip.fx(vfx.mirror_x)
@@ -335,7 +334,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v49_antilaziness.mp4"
+        out = "horror_v51_context_translator.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -354,7 +353,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nTembellik Karşıtı Mod (V49)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nBağlam Çevirici Mod (V51)...")
         
         content = get_content(topic)
         
@@ -362,10 +361,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        # Kullanıcıya kaç kelime bulduğumuzu gösterelim
-        count = len(content['visual_queries'])
-        preview = ", ".join(content['visual_queries'][:4])
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🔢 {count} Arama Terimi: {preview}...\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🧠 Sahne: {content['visual_queries'][0]}\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
