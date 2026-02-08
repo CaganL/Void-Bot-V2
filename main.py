@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V21: VISCERAL PAIN & HESITATION) ---
+# --- AI İÇERİK (V22: EXTENDED BRIDGE & BIOLOGICAL SHOCK) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -38,22 +38,20 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT GÜNCELLEMESİ:
-    # 1. Kelime Sayısı: 70-80 (Bridge kısmını uzatmak için 5 kelime artırdık).
-    # 2. Bridge Kuralı: "HESITATION" (Tereddüt) ekle. (Elim titredi, duraksadım).
-    # 3. Climax Kuralı: "SPECIFIC PAIN". "It grabbed me" YASAK. "Bone cracked", "Skin tore", "Crushed" ZORUNLU.
+    # PROMPT DEVRİMİ:
+    # 1. Length: 75-85 Kelime (Bridge'i uzatmak için).
+    # 2. Bridge Rule: "3-STEP HESITATION". (Reach -> Stop -> Tremble).
+    # 3. Climax Rule: "BODY FAILURE". (Vision blurs, Knees buckle).
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (70-80 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
-        "CRITICAL RULES FOR 9/10 SCORE:\n"
-        "1. LENGTH: 70-80 words. (Target 28-30s).\n"
-        "2. STRUCTURE:\n"
-        "   - Hook: Something is wrong.\n"
-        "   - Bridge (IMPORTANT): Include HESITATION and PHYSICAL REACTION. (e.g., 'My hand shakes on the handle', 'I hold my breath', 'I step back').\n"
-        "   - Climax: VISCERAL PAIN/VIOLENCE. Do NOT say 'It grabbed me'. Say 'Cold fingers crushed my windpipe', 'Teeth sank into my shoulder', 'Bones cracked'.\n"
-        "3. STYLE: Simple English (A2). Drop articles. Short sentences.\n"
-        "4. POV: First person ('I'). No visual notes."
+        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (75-85 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "CRITICAL RULES FOR 9.5/10 SCORE:\n"
+        "1. LENGTH: 75-85 words. Target 28-30s. DO NOT RUSH.\n"
+        "2. THE BRIDGE (MOST IMPORTANT): You must write 3 distinct sentences about hesitation. Example: 'I reach out. I stop. My hand shakes uncontrollably. I force myself to continue.' Build the dread.\n"
+        "3. THE CLIMAX: Visceral Pain + Body Reaction. Not just 'It grabbed me'. Say: 'Bones snapped. My vision went black. I collapsed.'\n"
+        "4. STYLE: Simple English (A2). Drop articles. Short sentences.\n"
+        "5. POV: First person ('I'). No visual notes."
     )
     
     payload = {
@@ -106,14 +104,16 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
-    required_clips = int(audio.duration / 2.5) + 4
+    # Audio uzadığı için klip sayısı arttı
+    required_clips = int(audio.duration / 2.5) + 5
     search_terms = keywords * 4
     random.shuffle(search_terms)
 
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            query_enhanced = f"{q} horror scary dark cinematic pov suspense shadow pain"
+            # GÖRSEL ARAMA: "Trembling hand", "Fear", "Pain" eklendi
+            query_enhanced = f"{q} horror scary dark cinematic pov trembling fear pain"
             url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=5&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
@@ -146,7 +146,7 @@ async def generate_resources(content):
         
     return paths, audio
 
-# --- GÖRSEL EFEKTLER (V17 İLE AYNI - ONAYLI) ---
+# --- GÖRSEL EFEKTLER (V17 SABİT & SAKİN - ONAYLI) ---
 def cold_horror_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
@@ -208,7 +208,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_visceral_v21.mp4"
+        out = "horror_extended_v22.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -227,7 +227,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nVisceral Climax Modu (V21)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nUzatılmış Köprü Modu (V22)...")
         
         content = get_content(topic)
         
@@ -235,7 +235,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n🩸 Hedef: Tereddüt & Şiddetli Acı\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 {content['title']}\n🌉 Köprü Uzatıldı | 🩸 Final Detaylandırıldı\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
