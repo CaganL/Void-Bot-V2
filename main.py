@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V15 İLE AYNI - PROMPT MÜKEMMEL) ---
+# --- AI İÇERİK (V17: SENSORY HOOK & UZATILMIŞ METİN) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -38,18 +38,20 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # Prompt V15 ile aynı (Çünkü metin tarafı kusursuz)
+    # PROMPT GÜNCELLEMESİ:
+    # 1. Kelime Sayısı: 65-75 (Süreyi 26-28sn bandına oturtmak için biraz artırdık).
+    # 2. Hook: "SENSORY" (Duyusal). "My bed is unsafe" (Soyut) yerine "I hear breathing" (Somut).
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| PERSONAL HOOK (Max 8 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. Use senses: Hear/See/Feel. Ex: 'I hear breathing') ||| SEO DESCRIPTION ||| NARRATION SCRIPT (65-75 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
         "CRITICAL RULES:\n"
-        "1. LENGTH: STRICTLY 50-60 words. Must fit in 28 seconds.\n"
-        "2. STYLE: Ultra-concise. Drop articles (the, a, an). Example: 'I hear clicks', not 'I hear the clicks'.\n"
-        "3. STRUCTURE: Max 8 words per sentence. Easy to read subtitles.\n"
+        "1. LENGTH: 65-75 words. Target 26-29 seconds.\n"
+        "2. STYLE: Ultra-concise. Drop articles (the, a, an). Example: 'Floorboards creak', not 'The floorboards creak'.\n"
+        "3. STRUCTURE: Short sentences. Easy to read.\n"
         "4. POV: First person ('I'). No visual notes.\n"
-        "5. ENDING: Sudden physical pain or shock (e.g., 'It smashed my hand').\n"
-        "6. PACING: Fast action. No long descriptions."
+        "5. ENDING: Physical action/shock (e.g., 'Cold fingers grab me').\n"
+        "6. PACING: Slow burn start, fast panic end."
     )
     
     payload = {
@@ -93,8 +95,8 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # Ses: +0% Hız, -5Hz Pitch
-    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+0%", pitch="-5Hz")
+    # SES AYARI: -5% Hız (Atmosfer için hafif yavaşlatma, metni uzattığımız için dengeler)
+    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -102,16 +104,15 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
-    required_clips = int(audio.duration / 2.0) + 5 # Biraz daha fazla klip çekelim
+    required_clips = int(audio.duration / 2.5) + 4
     search_terms = keywords * 4
     random.shuffle(search_terms)
 
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            # Geniş arama havuzu
-            query_enhanced = f"{q} horror scary dark cinematic pov suspense mystery"
-            url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=8&orientation=portrait"
+            query_enhanced = f"{q} horror scary dark cinematic pov shadow slow motion"
+            url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=5&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
             
             for v in data.get("videos", []):
@@ -143,38 +144,32 @@ async def generate_resources(content):
         
     return paths, audio
 
-# --- GÖRSEL EFEKTLER VE MANİPÜLASYON (YENİ!) ---
+# --- GÖRSEL EFEKTLER (SABİT & SAKİN) ---
 def cold_horror_grade(image):
+    """
+    SABİT RENK PALETİ: Mavi/Yeşil yanıp sönmesini engeller.
+    Her zaman aynı 'Soğuk/Soluk' tonu uygular.
+    """
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
-    # Renkleri her seferinde biraz rastgele solduralım (Çeşitlilik için)
-    sat_factor = random.uniform(0.3, 0.5) 
-    desaturated = img_f * sat_factor + gray * (1 - sat_factor)
     
-    # Hafif Yeşil veya Mavi tint (Rastgele)
-    if random.random() > 0.5:
-        tint = np.array([0.9, 1.0, 1.1]) # Mavi
-    else:
-        tint = np.array([0.9, 1.05, 0.9]) # Pis Yeşil (Matrix/Saw havası)
-        
-    cold_img = desaturated * tint
+    # Renkleri %40 oranında öldür (Desaturation)
+    desaturated = img_f * 0.4 + gray * 0.6
+    
+    # Sabit Soğuk Tint (Hafif Mavi-Grimsi)
+    # R=0.9, G=1.0, B=1.1 (Mavi ağırlıklı, kırmızı az)
+    tint_matrix = np.array([0.9, 1.0, 1.1])
+    
+    cold_img = desaturated * tint_matrix
     return np.clip(cold_img, 0, 255).astype(np.uint8)
 
 def apply_processing(clip, duration):
-    # 1. Rastgele Başlangıç (Videonun farklı yerini kullanır)
+    # Rastgele Başlangıç (Klip çeşitliliği için)
     if clip.duration > duration:
         start = random.uniform(0, clip.duration - duration)
         clip = clip.subclip(start, start + duration)
     
-    # 2. Hız Manipülasyonu (%80 - %120 arası)
-    speed_factor = random.uniform(0.8, 1.2)
-    clip = clip.fx(vfx.speedx, speed_factor)
-    
-    # 3. Mirror Efekti (Ters Çevirme - %50 şans)
-    if random.random() > 0.5:
-        clip = clip.fx(vfx.mirror_x)
-    
-    # Kadrajlama (9:16)
+    # 9:16 Kırpma
     target_ratio = W / H
     if clip.w / clip.h > target_ratio:
         clip = clip.resize(height=H)
@@ -182,14 +177,27 @@ def apply_processing(clip, duration):
     else:
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
-        
-    # 4. Renk Efekti
-    clip = clip.fx(vfx.lum_contrast, contrast=0.2)
-    clip = clip.fl_image(cold_horror_grade)
+
+    # --- EFEKT SEÇİCİ (KAOSU ENGELLEMEK İÇİN) ---
+    # Her klibe SADECE BİR efekt uygula (veya hiç uygulama)
+    effect_type = random.choice(["zoom", "speed", "mirror", "none"])
     
-    # 5. Dinamik Zoom (Bazen ileri, bazen geri)
-    zoom_dir = random.choice([0.02, -0.01]) # + İleri, - Geri
-    clip = clip.resize(lambda t: 1 + zoom_dir * t).set_position(('center', 'center'))
+    if effect_type == "speed":
+        # Hız: %90 ile %110 arası (Çok hafif değişim)
+        speed_factor = random.uniform(0.9, 1.1)
+        clip = clip.fx(vfx.speedx, speed_factor)
+        
+    elif effect_type == "mirror":
+        # Ayna Efekti
+        clip = clip.fx(vfx.mirror_x)
+        
+    elif effect_type == "zoom":
+        # Çok yavaş Zoom (Creeping)
+        clip = clip.resize(lambda t: 1 + 0.015 * t).set_position(('center', 'center'))
+
+    # Renk Efekti (Her klibe Standart Uygulanır)
+    clip = clip.fx(vfx.lum_contrast, contrast=0.15) # Hafif kontrast
+    clip = clip.fl_image(cold_horror_grade) # Standart soğuk filtre
     
     return clip
 
@@ -206,7 +214,8 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                dur = random.uniform(2.0, 2.8)
+                # TEMPO: 2.5 - 3.5 saniye (Biraz daha sakin, izleyici görsele doysun)
+                dur = random.uniform(2.5, 3.5)
                 processed = apply_processing(c, dur)
                 clips.append(processed)
                 cur_dur += processed.duration
@@ -218,7 +227,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_remix_v16.mp4"
+        out = "horror_stabilized_v17.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -237,7 +246,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nRemix Modu Aktif (Görsel Çeşitlilik)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAtmosferik Stabilizasyon (V17)...")
         
         content = get_content(topic)
         
@@ -245,7 +254,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n🔄 Mirror, Speed & Color Remix uygulanıyor...\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 {content['title']}\n🎨 Renkler sabitlendi. Kaos engellendi.\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
