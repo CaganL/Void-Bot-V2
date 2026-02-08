@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V29: 70-80 KELİME & -5% HIZ) ---
+# --- AI İÇERİK (V30: 75-85 KELİME & -5% HIZ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -39,20 +39,20 @@ def get_content(topic):
     ]
 
     # PROMPT AYARI:
-    # 1. Kelime: 70-80 (Senin isteğin).
-    # 2. Hız: -5% olduğu için metin akıcı olmalı (virgül kullanımı).
-    # 3. Yapı: Bridge (Tereddüt) kısmı vurgulu.
+    # 1. Kelime: 75-85 (İdeal Süre İçin).
+    # 2. Hız: -5% (Atmosferik).
+    # 3. Yapı: Bridge (Tereddüt) kısmı daha detaylı.
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (70-80 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
-        "CRITICAL RULES (Target 32-35 Seconds):\n"
-        "1. LENGTH: STRICTLY 70-80 words. Perfect length for -5% speed.\n"
+        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (75-85 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "CRITICAL RULES (Target 30-33 Seconds):\n"
+        "1. LENGTH: STRICTLY 75-85 words. Use this extra space to describe the FEAR in the middle section.\n"
         "2. STRUCTURE:\n"
         "   - Hook: Concrete & Scary.\n"
-        "   - Middle (Bridge): Focus on the HESITATION. Use commas to make it flow. (e.g. 'I reach out, hand trembling, breath held tight').\n"
-        "   - End: Visceral physical shock/pain.\n"
-        "3. PACING: Flowing narration. Not too choppy.\n"
+        "   - Middle (Bridge): EXPAND this. Describe the trembling, the sweat, the hesitation. Use commas for flow.\n"
+        "   - End: Visceral physical shock/pain (e.g., 'Skin tore', 'Bones crushed').\n"
+        "3. PACING: Flowing narration with a creepy undertone.\n"
         "4. POV: First person ('I'). No visual notes."
     )
     
@@ -97,8 +97,7 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # SES AYARI: -5% Hız (Senin İsteğin)
-    # Bu hız, 70-80 kelime ile birleşince hikayeye çok güzel bir ağırlık katacak.
+    # SES AYARI: -5% Hız (En Beğenilen Ayar)
     communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
@@ -107,7 +106,7 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
-    # Klip sayısı biraz arttı (Süre uzadığı için)
+    # Klip sayısı artırıldı
     required_clips = int(audio.duration / 3.0) + 4
     search_terms = keywords * 4
     random.shuffle(search_terms)
@@ -198,7 +197,7 @@ def build_video(content):
             if cur_dur >= audio.duration: break
             try:
                 c = VideoFileClip(p).without_audio()
-                # TEMPO: 3.0 saniye civarı (Sakin ve Emin)
+                # TEMPO: 3.0 saniye civarı
                 dur = random.uniform(2.8, 3.5)
                 processed = apply_processing(c, dur)
                 clips.append(processed)
@@ -211,7 +210,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_heavy_v29.mp4"
+        out = "horror_ultimate_v30.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -230,7 +229,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAğır Siklet Modu (V29)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nUltimate Balance Modu (V30)...")
         
         content = get_content(topic)
         
@@ -238,7 +237,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n⚖️ 70-80 Kelime | -5% Hız\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 {content['title']}\n⚖️ 75-85 Kelime | -5% Hız\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
