@@ -18,7 +18,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 720, 1280
 
-# --- SABİT ETİKETLER (Genel) ---
+# --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
 # --- TEMİZLİK ---
@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V31: VIRAL OPTIMIZATION - KISA HOOK & SEO) ---
+# --- AI İÇERİK (V32: SESLİ HOOK & OPTİMİZE SÜRE) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -38,23 +38,19 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT DEVRİMİ:
-    # 1. Hook: "PUNCHY". Max 5 kelime.
-    # 2. Title: "CLICKBAIT". (DEAD, KILLER, 3AM gibi kelimeler).
-    # 3. Length: 60-70 Kelime (30 saniye garantisi).
-    # 4. Tags: Konuya özel etiketler üretmesi istendi.
+    # PROMPT GÜNCELLEMESİ:
+    # 1. Script Length: 55-65 Kelime (Çünkü Hook eklenecek, süre artmasın diye kısalttık).
+    # 2. Hook: Seslendirileceği için çok vurucu olmalı.
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (Max 4 words, scary) ||| PUNCHY HOOK (Max 5 words. Shocking.) ||| SEO DESCRIPTION (Include keywords like 'Real scary story') ||| NARRATION SCRIPT (60-70 words) ||| #tag1 #tag2 #tag3 #tag4 #tag5\n\n"
-        "CRITICAL RULES (Target 28-30 Seconds):\n"
-        "1. LENGTH: STRICTLY 60-70 words. We need a tight 30s video.\n"
-        "2. HOOK: Must be short and aggressive. Example: 'Dead mom texted me.' (4 words).\n"
-        "3. TITLE: Use trigger words: DEAD, 3AM, GHOST, KILLER.\n"
-        "4. DESCRIPTION: Write for SEO. Use high search volume keywords.\n"
-        "5. TAGS: Generate 5 specific hashtags relevant to the story (e.g. #hauntedphone).\n"
-        "6. PACING: Flowing narration (-5% speed optimized). Use commas.\n"
-        "7. CLIMAX: Visceral physical shock."
+        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words. Shocking statement.) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 words) ||| #tag1 #tag2 #tag3 #tag4 #tag5\n\n"
+        "CRITICAL RULES (Target 30 Seconds Total):\n"
+        "1. LENGTH: NARRATION must be 55-65 words. (We will add the Hook to the audio, so keep the story tight).\n"
+        "2. HOOK: This will be spoken first. Make it scary. (e.g., 'Don't look under your bed.').\n"
+        "3. PACING: Use commas for flow.\n"
+        "4. CLIMAX: Visceral physical shock.\n"
+        "5. TAGS: Specific hashtags."
     )
     
     payload = {
@@ -80,7 +76,6 @@ def get_content(topic):
                     parts = raw_text.split("|||")
                     
                     if len(parts) >= 5:
-                        # Etiketleri temizle ve listeye çevir
                         raw_tags = parts[4].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
@@ -89,8 +84,8 @@ def get_content(topic):
                             "hook": parts[1].strip(),
                             "description": parts[2].strip(),
                             "script": parts[3].strip(),
-                            "tags": " ".join(valid_tags), # Özel etiketler
-                            "search_keywords": [k.replace("#", "") for k in valid_tags] # Görsel arama için
+                            "tags": " ".join(valid_tags),
+                            "search_keywords": [k.replace("#", "") for k in valid_tags]
                         }
                         print(f"✅ İçerik alındı ({model})")
                         return data
@@ -100,12 +95,16 @@ def get_content(topic):
 
 # --- MEDYA OLUŞTURMA ---
 async def generate_resources(content):
+    hook = content["hook"]
     script = content["script"]
-    # Görsel arama için etiketleri kullanıyoruz
     keywords = content["search_keywords"]
     
-    # SES AYARI: -5% Hız (En ideali bu)
-    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
+    # --- KRİTİK GÜNCELLEME: HOOK + SCRIPT BİRLEŞİMİ ---
+    # Hook'u başa alıyoruz ve araya "..." koyuyoruz ki Christopher biraz essin.
+    full_audio_text = f"{hook}... {script}"
+    
+    # SES AYARI: -5% Hız
+    communicate = edge_tts.Communicate(full_audio_text, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -215,7 +214,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_viral_v31.mp4"
+        out = "horror_voiced_hook_v32.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -234,7 +233,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nViral Optimizasyon Modu (V31)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSesli Kanca Modu (V32)...")
         
         content = get_content(topic)
         
@@ -242,12 +241,11 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🪝 {content['hook']}\n🏷️ Özel Etiketler Eklendi.\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Hook: Seslendiriliyor.\n🏷️ SEO: Optimize.\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
         if path and os.path.exists(path):
-            # Etiketleri Birleştir: Sabitler + Botun Ürettikleri
             final_tags = f"{FIXED_HASHTAGS} {content['tags']}"
             
             caption_text = (
