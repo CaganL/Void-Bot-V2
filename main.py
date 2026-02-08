@@ -27,7 +27,7 @@ def clean_start():
         requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-# --- AI İÇERİK (V23: FLUID TENSION - VİRGÜL ODAKLI) ---
+# --- AI İÇERİK (V24: UZUN METİN & AKICI KORKU) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -39,21 +39,21 @@ def get_content(topic):
     ]
 
     # PROMPT DEVRİMİ:
-    # 1. Kelime Sayısı: 60-70 (Tekrar 28sn bandına çektik).
-    # 2. Akış Kuralı: "USE COMMAS, NOT PERIODS". (Duraksamayı önlemek için).
-    # 3. Bridge: "Flowing Hesitation" (Akıcı Tereddüt).
+    # 1. Length: 80-95 Kelime. (Akış hızlı olduğu için metni uzattık).
+    # 2. Bridge: "EXTENDED HESITATION". Virgüllerle uzatılmış gerilim anı.
+    # 3. Punctuation: Virgül kullanımı zorunlu, nokta kullanımı minimum.
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (60-70 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
-        "CRITICAL RULES FOR FLOW (28 Seconds):\n"
-        "1. LENGTH: STRICTLY 60-70 words. Do not write more.\n"
-        "2. PACING: Avoid too many periods ('.'). Use COMMAS (',') to connect actions. This prevents the voice from pausing too much.\n"
-        "   - BAD: 'I stop. I look. I wait.'\n"
-        "   - GOOD: 'I stop, looking around, waiting for a sound.'\n"
-        "3. THE BRIDGE: Describe hesitation using commas. Build tension without stopping the flow.\n"
-        "4. THE CLIMAX: Visceral Pain (e.g., 'Bones cracked', 'Vision blurred').\n"
-        "5. STYLE: Simple English (A2). Drop articles."
+        "SHORT TITLE (Max 5 words) ||| SENSORY HOOK (Max 8 words. I hear/see/feel...) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (80-95 words) ||| keyword1, keyword2, keyword3, keyword4, keyword5\n\n"
+        "CRITICAL RULES FOR 28-SECOND FLOW:\n"
+        "1. LENGTH: STRICTLY 80-95 words. We need content to fill the time.\n"
+        "2. PACING: Use COMMAS (',') to create a flowing, breathless narration. Avoid short, choppy sentences with periods.\n"
+        "   - BAD: 'I walk. I stop. I hear a noise.'\n"
+        "   - GOOD: 'I walk down the hall, stopping dead in my tracks, hearing a wet noise coming from the walls.'\n"
+        "3. THE BRIDGE: Expand the tension. Describe the physical sensation of fear (sweat, shaking, heart pounding) in detail.\n"
+        "4. THE CLIMAX: Visceral Pain/Shock. (e.g., 'Bones snapping', 'Skin tearing').\n"
+        "5. STYLE: Simple English (A2). First Person ('I')."
     )
     
     payload = {
@@ -97,8 +97,8 @@ async def generate_resources(content):
     script = content["script"]
     keywords = content["keywords"]
     
-    # Ses: +0% (Normal Hız) - Metin akıcı olduğu için bu hızda takılmadan okuyacak.
-    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="+0%", pitch="-5Hz")
+    # SES AYARI: -5% Hız (Metin akıcı olduğu için bu hız 'Robotik' değil 'Atmosferik' olacak)
+    communicate = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate.save("voice.mp3")
     audio = AudioFileClip("voice.mp3")
     
@@ -106,14 +106,13 @@ async def generate_resources(content):
     paths = []
     used_links = set()
     
-    required_clips = int(audio.duration / 2.5) + 4
+    required_clips = int(audio.duration / 2.5) + 5
     search_terms = keywords * 4
     random.shuffle(search_terms)
 
     for q in search_terms:
         if len(paths) >= required_clips: break
         try:
-            # GÖRSEL ARAMA:
             query_enhanced = f"{q} horror scary dark cinematic pov trembling fear pain"
             url = f"https://api.pexels.com/videos/search?query={query_enhanced}&per_page=5&orientation=portrait"
             data = requests.get(url, headers=headers, timeout=10).json()
@@ -147,7 +146,7 @@ async def generate_resources(content):
         
     return paths, audio
 
-# --- GÖRSEL EFEKTLER (SABİT & SAKİN - ONAYLI) ---
+# --- GÖRSEL EFEKTLER (V17 SABİT & SAKİN - ONAYLI) ---
 def cold_horror_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
@@ -209,7 +208,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_fluid_v23.mp4"
+        out = "horror_flow_v24.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -228,7 +227,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAkıcı Gerilim Modu (V23)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nDolgun Akış Modu (V24)...")
         
         content = get_content(topic)
         
@@ -236,7 +235,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 {content['title']}\n🌊 Noktalar kalktı, akış hızlandı.\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 {content['title']}\n📝 Metin uzatıldı (80-95 kelime)\n🌊 Akış düzeltildi\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
