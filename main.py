@@ -38,15 +38,15 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ ---
+# --- GARANTİ KORKU SAHNELERİ (Body Horror Odaklı) ---
 EMERGENCY_SCENES = [
     "dark shadow wall", "door handle turning", "broken mirror reflection", 
     "pale hand reaching", "person falling floor", "scary stairs", 
     "feet dragging", "glass breaking", "blood drip", "medical bandage",
-    "blurry vision point of view", "dizzy camera movement", "eye close up scary"
+    "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V88: 4 CÜMLELİ YAPI - KUSURSUZ AKIŞ) ---
+# --- AI İÇERİK (V81: KEMİK KIRAN - 10/10 CHECKLIST) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,22 +57,27 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: 4 SENTENCE STRUCTURE
-    # Bu yapı doğal olarak 25-33 saniye arasına oturur.
+    # PROMPT: THE BONE BREAKER (Strict Checklist Compliance)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (EXACTLY 4 SENTENCES) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
-        "CRITICAL RULES (NATURAL FLOW):\n"
-        "1. **STRUCTURE (THE 4 SENTENCES):**\n"
-        "   - Sentence 1: The Setup (What do you see/hear?).\n"
-        "   - Sentence 2: The Action (Something moves/grabs).\n"
-        "   - Sentence 3: The Impact (Physical pain/fall).\n"
-        "   - Sentence 4: The Final Horror (Biological damage/Death).\n"
-        "2. **STYLE:** Use connectors (and, but, then) to make it flow naturally.\n"
-        "   - *Example:* 'I looked down and saw a hand, then it grabbed my ankle tightly.'\n"
-        "3. **CONTENT:** Make it scary and physical. Bone breaking, blood, screaming.\n"
-        "4. **LENGTH:** Just stick to 4 solid sentences. Not too short, not too long."
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Strict Formula) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CRITICAL RULES (10/10 SCORE CHECKLIST):\n"
+        "1. **HOOK FORMULA (MANDATORY):**\n"
+        "   - MUST be: 'I [Saw/Heard/Felt] [Physical Object] in [Location]'.\n"
+        "   - *Bad:* 'Something lived in the bin.' (Abstract)\n"
+        "   - *Good:* 'I saw a hand in the trash bin.' (Concrete)\n"
+        "2. **ADJECTIVE PURGE (THE STUNTMAN STYLE):**\n"
+        "   - DELETE adjectives like 'gray', 'hot', 'loud', 'scary', 'dark'.\n"
+        "   - Use NOUN + VERB. 'Hand grabbed.' 'Head hit.' 'Bone cracked.'\n"
+        "3. **ACTION CHAIN (3-STEP IMPACT):**\n"
+        "   - Step 1: Contact (Grab/Touch)\n"
+        "   - Step 2: Reaction Failure (Slip/Fall/Hit head)\n"
+        "   - Step 3: Drag/Crush.\n"
+        "4. **FINALE (ANATOMICAL FAILURE):**\n"
+        "   - Do NOT end with 'darkness' or 'fading'.\n"
+        "   - END with specific damage: 'Teeth hit floor.' 'Arm snapped.' 'Jaw crushed.'\n"
+        "5. **LENGTH:** 55-65 WORDS. Use commas to keep flow."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -83,7 +88,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: WRITE EXACTLY 4 SENTENCES. MAKE IT SCARY."
+            prompt += f"\n\nIMPORTANT: REMOVE ADJECTIVES. MAKE THE HOOK CONCRETE ('I saw...'). END WITH BROKEN BONES."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -110,6 +115,13 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
+                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
+
+                        # Klişe ve Sıfat Kontrolü
+                        bad_words = ["something lived", "felt like", "seemed", "darkness took", "silent scream", "gray hand", "hot water"]
+                        if any(w in script_text.lower() for w in bad_words):
+                             print("❌ Yasaklı kelime/sıfat tespit edildi. Reddedildi.")
+                             continue
                         
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
@@ -137,28 +149,23 @@ def get_content(topic):
                             "tags": " ".join(valid_tags)
                         }
 
-                        # --- GÜVENLİK AĞI: Her geçerli formatı kaydet ---
+                        # FAIL-SAFE: Her geçerli veriyi sakla
                         last_valid_data = current_data 
-                        
-                        # --- GENİŞ ARALIK KONTROLÜ (35-75 Kelime) ---
-                        # Bu aralık çok geniştir, neredeyse her mantıklı hikayeyi kabul eder.
-                        # Amaç sadece "tek kelime" veya "roman" yazılmasını engellemek.
-                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime. (Yedeğe alındı)")
 
-                        if 35 <= word_count <= 75: 
-                            print(f"✅ Uygun İçerik. Hemen Kullanılıyor.")
+                        # Tam Hedef Kontrolü (55-70 arası ideal)
+                        if 55 <= word_count <= 70: 
+                            print(f"✅ Mükemmel Uzunluk ({word_count}) ve Temiz Dil. Onaylandı.")
                             return current_data
                         
-                        # Eğer çok saçma bir uzunluktaysa (örn 10 kelime veya 100 kelime), tekrar dene.
+                        print(f"⚠️ Uzunluk ({word_count}) ideal değil. Tekrar deneniyor...")
 
         except: continue
 
-    # --- ASLA BOŞ DÖNME ---
     if last_valid_data:
-        print("🛡️ İdeal aralık tam tutmasa bile ELDEKİ VERİ kullanılıyor.")
+        print("⚠️ İdeal sonuç bulunamadı, en son geçerli veri kullanılıyor (Fail-Safe).")
         return last_valid_data
     
-    print("❌ API Hatası (İnternet bağlantısını kontrol edin).")
+    print("❌ İçerik üretilemedi.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -239,7 +246,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # HIZ: -5% (En iyi korku atmosferi)
+    # HIZ: -5% (V81'in Orijinal Ayarı - Korku için en iyisi)
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -369,7 +376,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v88_four_sentences.mp4"
+        out = "horror_v81_bone_breaker.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -387,15 +394,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n4 Cümleli Yapı (V88)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKemik Kıran Modu (V81 Geri Döndü)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Kritik hata.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Sistem hatası (Hiç içerik alınamadı).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🏗️ Doğal Yapı: 4 Cümle\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🦴 Kemik Kırma & Sıfat Yasağı\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
