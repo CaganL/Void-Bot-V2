@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V74: KLİŞE KATİLİ & DURDURULAMAZ) ---
+# --- AI İÇERİK (V75: KİNETİK DARBE - FİZİKSEL TEMAS ZORUNLU) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,31 +57,32 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: CLICHÉ KILLER (No metaphors, Raw Symptoms)
+    # PROMPT: KINETIC IMPACT (Action > Description)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (AIM FOR 60-70 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **THE CLICHÉ KILLER (STYLE):**\n"
-        "   - **BANNED PHRASES:** 'Silent scream', 'Heart hammered/pounded', 'Blood ran cold', 'Shiver down spine', 'Frantic drum'.\n"
-        "   - **REQUIRED:** Describe RAW PAIN and SYMPTOMS. \n"
-        "   - *BAD:* 'My heart beat like a drum.'\n"
-        "   - *GOOD:* 'Chest hurt. Pulse visible in eyes. Nausea hit hard.'\n"
-        "2. **LENGTH:** AIM FOR 60-75 WORDS. (30-35 Seconds).\n"
-        "3. **FLOW:** Use commas to connect actions. Keep it fast.\n"
-        "4. **STRUCTURE:** Trigger -> Freeze -> Collapse."
+        "1. **STYLE: NO ADJECTIVES, ONLY VERBS.**\n"
+        "   - DELETE: 'Cold fear', 'Silent scream', 'Dark shadow', 'Heavy air'.\n"
+        "   - USE: 'Hand grabbed', 'Bone snapped', 'Teeth hit floor', 'Skin tore'.\n"
+        "2. **MANDATORY PHYSICAL CONTACT (THE CLIMAX):**\n"
+        "   - The entity MUST touch the narrator. NO just 'staring'.\n"
+        "   - Example: 'Cold fingers wrapped around my ankle. It yanked me down.'\n"
+        "3. **BIOLOGICAL ENDING:**\n"
+        "   - End with bodily failure. 'Vision blurred. Mouth filled with blood. Blackout.'\n"
+        "4. **LENGTH:** 55-65 WORDS. (Target ~28 seconds)."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
     last_valid_data = None 
 
-    # --- DENETİM DÖNGÜSÜ (5 HAK) ---
+    # --- DENETİM DÖNGÜSÜ ---
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: REMOVE ALL METAPHORS. NO 'HEART HAMMERED'. USE RAWER WORDS."
+            prompt += f"\n\nIMPORTANT: MAKE IT MORE VIOLENT. ADD PHYSICAL CONTACT. USE FEWER ADJECTIVES."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -109,10 +110,10 @@ def get_content(topic):
 
                         word_count = len(script_text.split())
                         
-                        # Klişe Kontrolü (Kod tarafında da kontrol edelim)
-                        cliches = ["hammered", "drum", "silent scream", "ran cold", "shiver"]
+                        # Klişe Kontrolü (Hala edebi konuşuyorsa reddet)
+                        cliches = ["silent scream", "blood ran cold", "shiver down", "felt like", "seemed to"]
                         if any(c in script_text.lower() for c in cliches):
-                            print(f"⚠️ Klişe tespit edildi. Tekrar deneniyor...")
+                            print(f"⚠️ Klişe tespit edildi ({word_count}). Tekrar deneniyor...")
                             continue
 
                         raw_tags = parts[5].strip().replace(",", " ").split()
@@ -143,7 +144,8 @@ def get_content(topic):
 
                         last_valid_data = current_data 
 
-                        if 55 <= word_count <= 80: 
+                        # Hedef Aralık: 55-65 Kelime
+                        if 55 <= word_count <= 70: 
                             print(f"✅ Mükemmel Uzunluk ({word_count}) ve Temiz Dil. Onaylandı.")
                             return current_data
                         
@@ -365,7 +367,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v74_cliche_killer.mp4"
+        out = "horror_v75_kinetic.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -383,7 +385,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKlişe Katili Modu (V74)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKinetik Darbe Modu (V75)...\n")
         
         content = get_content(topic)
         
@@ -391,7 +393,7 @@ def handle(message):
             bot.edit_message_text("❌ Sistem hatası (Hiç içerik alınamadı).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🚫 'Kalbim Gümledi' Yasak\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🥊 Fiziksel Temas Zorunlu\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
