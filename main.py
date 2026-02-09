@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V75: KİNETİK DARBE - FİZİKSEL TEMAS ZORUNLU) ---
+# --- AI İÇERİK (V76: AKIŞ USTASI - AZ NOKTA, ÇOK HIZ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,21 +57,20 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: KINETIC IMPACT (Action > Description)
+    # PROMPT: LOW WORD COUNT + HIGH FLOW (COMMA OVER DOSE)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 40-50 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **STYLE: NO ADJECTIVES, ONLY VERBS.**\n"
-        "   - DELETE: 'Cold fear', 'Silent scream', 'Dark shadow', 'Heavy air'.\n"
-        "   - USE: 'Hand grabbed', 'Bone snapped', 'Teeth hit floor', 'Skin tore'.\n"
-        "2. **MANDATORY PHYSICAL CONTACT (THE CLIMAX):**\n"
-        "   - The entity MUST touch the narrator. NO just 'staring'.\n"
-        "   - Example: 'Cold fingers wrapped around my ankle. It yanked me down.'\n"
-        "3. **BIOLOGICAL ENDING:**\n"
-        "   - End with bodily failure. 'Vision blurred. Mouth filled with blood. Blackout.'\n"
-        "4. **LENGTH:** 55-65 WORDS. (Target ~28 seconds)."
+        "1. **SPEED HACK (CRITICAL):**\n"
+        "   - **PROBLEM:** Too many periods (.) make the audio too slow.\n"
+        "   - **SOLUTION:** USE COMMAS. Connect actions.\n"
+        "   - *BAD:* 'I woke. Feet dangled. Hand grabbed.' (Too slow).\n"
+        "   - *GOOD:* 'I woke and feet dangled, then a hand grabbed my ankle.' (Fast).\n"
+        "2. **LENGTH:** STRICTLY 40-50 WORDS. No more.\n"
+        "3. **CONTENT:** VIOLENT KINETIC IMPACT. Pull, drag, hit, bleed.\n"
+        "4. **STRUCTURE:** Trigger -> Physical Contact -> Biological Collapse."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -82,7 +81,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: MAKE IT MORE VIOLENT. ADD PHYSICAL CONTACT. USE FEWER ADJECTIVES."
+            prompt += f"\n\nIMPORTANT: MAKE IT SHORTER. MAX 50 WORDS. USE FEWER FULL STOPS."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -109,11 +108,11 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        
-                        # Klişe Kontrolü (Hala edebi konuşuyorsa reddet)
-                        cliches = ["silent scream", "blood ran cold", "shiver down", "felt like", "seemed to"]
+                        period_count = script_text.count('.') # Nokta sayısını kontrol et
+
+                        # Klişe Kontrolü
+                        cliches = ["silent scream", "blood ran cold"]
                         if any(c in script_text.lower() for c in cliches):
-                            print(f"⚠️ Klişe tespit edildi ({word_count}). Tekrar deneniyor...")
                             continue
 
                         raw_tags = parts[5].strip().replace(",", " ").split()
@@ -144,17 +143,18 @@ def get_content(topic):
 
                         last_valid_data = current_data 
 
-                        # Hedef Aralık: 55-65 Kelime
-                        if 55 <= word_count <= 70: 
-                            print(f"✅ Mükemmel Uzunluk ({word_count}) ve Temiz Dil. Onaylandı.")
+                        # --- KATI KONTROL ---
+                        # 40-55 kelime arası VE nokta sayısı 8'den azsa MÜKEMMEL
+                        if 40 <= word_count <= 55 and period_count <= 8: 
+                            print(f"✅ Mükemmel: {word_count} Kelime, {period_count} Nokta. Onaylandı.")
                             return current_data
                         
-                        print(f"⚠️ Uzunluk ({word_count}) ideal değil. Tekrar deneniyor...")
+                        print(f"⚠️ Uygun değil (Kelime: {word_count}, Nokta: {period_count}). Tekrar deneniyor...")
 
         except: continue
 
     if last_valid_data:
-        print("⚠️ İdeal sonuç bulunamadı, en son geçerli veri kullanılıyor.")
+        print("⚠️ İdeal yapı bulunamadı, en son geçerli veri kullanılıyor.")
         return last_valid_data
     
     print("❌ İçerik üretilemedi.")
@@ -367,7 +367,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v75_kinetic.mp4"
+        out = "horror_v76_flow_master.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -385,15 +385,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKinetik Darbe Modu (V75)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAkış Ustası (V76)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Sistem hatası (Hiç içerik alınamadı).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Sistem hatası.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🥊 Fiziksel Temas Zorunlu\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🌊 Virgül: Aktif | Nokta: Minumum\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
