@@ -10,7 +10,7 @@ from moviepy.editor import (
     VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips, AudioClip
 )
 
-# BS4 Koruması (Yüklü değilse çökmesin diye)
+# BS4 Koruması
 try:
     from bs4 import BeautifulSoup
     BS4_AVAILABLE = True
@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V61: HECE KATİLİ & LİSTE ÇOĞALTICI) ---
+# --- AI İÇERİK (V62: MAĞARA ADAMI TELGRAFI) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,26 +57,23 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: SYLLABLE SLASHER (Kısa kelimeler, kesik cümleler)
+    # PROMPT: CAVEMAN TELEGRAPH (No Articles, No Emotions)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Strict Formula) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **THE SYLLABLE SLASHER (SPEED IS KEY):**\n"
-        "   - **USE SHORT WORDS.** Mostly 1-2 syllables. \n"
-        "   - **BANNED WORDS:** 'Originated', 'Intensified', 'Temperature', 'Immediately', 'Exhalation', 'Spiked'.\n"
-        "   - **GOOD WORDS:** 'Wet', 'Hot', 'Skin', 'Bone', 'Blood', 'Back', 'Seat', 'Now'.\n"
-        "2. **GRAMMAR:** NO COMMAS. NO 'AND'. Use periods. Make it choppy.\n"
-        "   - BAD: 'I turned around, and then I saw it.'\n"
-        "   - GOOD: 'I turned. I saw it.'\n"
-        "3. **HOOK FORMULA (GPS LOCK):**\n"
-        "   - Must be: 'I [Heard/Saw/Felt] [Thing] in [Specific Location]'.\n"
-        "   - Example: 'I heard breathing in my back seat.'\n"
-        "4. **STRUCTURE:**\n"
-        "   - Trigger -> 3-Step Freeze -> Biological Damage.\n"
-        "   - Climax must be physical: 'Teeth cracked. Tasted copper.'\n"
-        "5. **LENGTH:** 55-65 words. (Target 28s)."
+        "1. **STYLE: CAVEMAN TELEGRAPH (SPEED IS GOD):**\n"
+        "   - **DROP ARTICLES:** Do not use 'The', 'A', 'An' unless necessary. \n"
+        "     *BAD:* 'The cold fear hit my bones.' (6 words)\n"
+        "     *GOOD:* 'Cold hit bones.' (3 words)\n"
+        "   - **NO EMOTION WORDS:** BANNED: 'Fear', 'Terror', 'Dread', 'Scared', 'Horror'.\n"
+        "     *Use PHYSICAL words:* 'Sweat', 'Blood', 'Shake', 'Freeze', 'Burn'.\n"
+        "2. **HOOK FORMULA:** 'I [Heard/Saw] [Thing] in [Location]'. (e.g. 'Heard breathing in elevator').\n"
+        "3. **STRUCTURE:**\n"
+        "   - Trigger -> 3-Step Freeze -> Biological Impact.\n"
+        "   - **Climax:** Must include PAIN or COLLAPSE. 'Teeth cracked. Eyes went black.'\n"
+        "4. **LENGTH:** 50-60 words MAX. (Target 25-28s). Chop every sentence."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -85,7 +82,7 @@ def get_content(topic):
     for attempt in range(3):
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: PREVIOUS ATTEMPT FAILED. USE SHORTER WORDS. NO COMMAS. MAKE IT CHOPPY."
+            prompt += f"\n\nIMPORTANT: PREVIOUS ATTEMPT FAILED. REMOVE 'THE' AND 'A'. REMOVE EMOTIONS. MAKE IT SHORTER."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -115,21 +112,26 @@ def get_content(topic):
                         word_count = len(script_text.split())
                         print(f"📊 Kelime Sayısı: {word_count}")
 
-                        if word_count < 50 or word_count > 75:
+                        # 45-70 arası ideal (Mağara adamı dili daha az kelimeyle çok şey anlatır)
+                        if word_count < 45 or word_count > 70:
                             print(f"❌ Metin uzunluğu uygunsuz ({word_count} kelime).")
                             time.sleep(1)
                             continue 
                         
+                        # --- YASAKLI KELİME KONTROLÜ (DUYGU & AKADEMİK) ---
+                        forbidden_words = ["fear", "terror", "dread", "scared", "originated", "intensified"]
+                        if any(word in script_text.lower() for word in forbidden_words):
+                             print("❌ Yasaklı kelime (Duygu/Akademik) tespit edildi. Reddediliyor.")
+                             continue
+
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
-                        # --- LİSTE ÇOĞALTICI (V61'İN GÜCÜ) ---
-                        # Gemini az kelime verirse, listeyi biz genişletiyoruz.
+                        # Liste Çoğaltıcı
                         if len(visual_queries) < 12:
-                            print(f"⚠️ Liste genişletiliyor ({len(visual_queries)} -> 20+)...")
                             expanded_queries = []
                             for q in visual_queries:
                                 expanded_queries.append(f"{q} close up")
@@ -235,6 +237,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
+    # SES
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -259,7 +262,7 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
-    # DÖNGÜ (V61)
+    # DÖNGÜ
     for query in visual_queries:
         if current_duration >= total_duration: break
         
@@ -366,7 +369,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v61_final.mp4"
+        out = "horror_v62_caveman_telegraph.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -385,7 +388,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHece Katili (V61)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nMağara Adamı Modu (V62)...")
         
         content = get_content(topic)
         
@@ -393,7 +396,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n✂️ Kısa Kelimeler & Çoklu Arama\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n⚡ Hızlı & Sert Anlatım\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -409,7 +412,7 @@ def handle(message):
             with open(path, "rb") as v:
                 bot.send_video(message.chat.id, v, caption=caption_text)
         else:
-            bot.edit_message_text("❌ Video render edilemedi (Kaynak bulunamadı).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Hata oluştu.", message.chat.id, msg.message_id)
             
     except Exception as e:
         bot.reply_to(message, f"Hata: {str(e)}")
