@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V78: SİNEMATİK RİTİM - YAVAŞLATILMIŞ SES & KONTROLLÜ NOKTALAMA) ---
+# --- AI İÇERİK (V79: USTURA AĞZI - HASSAS KISALTMA) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,21 +57,20 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: CINEMATIC PACING (Mixture of Flow and Pauses)
+    # PROMPT: TRIMMED FOR SPEED (45-55 WORDS)
+    # Hedef: 28-30 Saniye.
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 45-55 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **PACING (THE GOLDEN RATIO):**\n"
-        "   - Use a '3 Comma : 1 Period' ratio.\n"
-        "   - Use commas for speed in action scenes.\n"
-        "   - Use periods ONLY for the scary reveal or the ending.\n"
-        "   - *Example:* 'I turned, saw the hand, and froze. It smiled.'\n"
-        "2. **LENGTH:** 55-65 WORDS. (Target 28-32s with slow reading).\n"
-        "3. **STYLE:** KINETIC IMPACT (Action verbs) but with ATMOSPHERE.\n"
-        "4. **HOOK:** 'I [Heard/Saw] [Thing] in [Location]'.\n"
-        "5. **STRUCTURE:** Trigger -> Physical Contact -> Biological Collapse."
+        "1. **LENGTH CONTROL (TARGET: 28-30 SECONDS):**\n"
+        "   - **RANGE:** Must be between 45 and 55 words.\n"
+        "   - **CUT THE FAT:** Do NOT start with 'I was just...', 'Suddenly...', 'Then...'.\n"
+        "   - Start directly with the SENSATION or ACTION.\n"
+        "2. **STYLE:** KINETIC & RAW. Use commas to keep it moving.\n"
+        "3. **HOOK:** 'I [Heard/Saw] [Thing] in [Location]'.\n"
+        "4. **STRUCTURE:** Trigger -> Physical Contact -> Biological Collapse."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -80,7 +79,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: YOUR LAST SCRIPT WAS REJECTED. USE 55-65 WORDS. BALANCE THE COMMAS AND PERIODS."
+            prompt += f"\n\nIMPORTANT: PREVIOUS SCRIPT WAS TOO LONG. I NEED STRICTLY 45-55 WORDS. CUT 10 WORDS."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -107,23 +106,16 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        period_count = script_text.count('.')
-                        
-                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime, {period_count} Nokta")
+                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
 
-                        # Hedef: 55-65 Kelime (Yavaş okuma ile tam oturur)
-                        if word_count < 55: 
+                        # Hedef: 45-55 Kelime (Bu aralık 28-30 saniye için ideal)
+                        if word_count < 45: 
                             print(f"⚠️ Çok kısa ({word_count}). Uzatılıyor...")
                             continue 
                         
-                        if word_count > 70:
+                        if word_count > 55:
                             print(f"⚠️ Çok uzun ({word_count}). Kısaltılıyor...")
                             continue
-
-                        # Nokta Sayısı Kontrolü: En az 3, en çok 8 (Denge)
-                        if period_count < 3 or period_count > 8:
-                             print(f"⚠️ Ritim bozuk ({period_count} nokta). Tekrar deneniyor...")
-                             continue
 
                         # Klişe Kontrolü
                         cliches = ["silent scream", "blood ran cold", "shiver down"]
@@ -155,11 +147,11 @@ def get_content(topic):
                             "visual_queries": visual_queries,
                             "tags": " ".join(valid_tags)
                         }
-                        print(f"✅ İçerik ONAYLANDI ({current_model}) - Sinematik Mod")
+                        print(f"✅ İçerik ONAYLANDI ({current_model}) - Ustura Modu")
                         return data
         except: continue
 
-    print("❌ 5 denemede de uygun ritim yakalanamadı.")
+    print("❌ 5 denemede de uygun aralıkta metin alınamadı.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -240,10 +232,10 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # SES AYARI: %10 YAVAŞLATMA (Atmosphere Hack)
-    communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-10%", pitch="-5Hz")
+    # HIZ GÜNCELLEMESİ: -10% yerine -5% (Biraz hızlandırdık)
+    communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
-    communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-10%", pitch="-5Hz")
+    communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_script.save("script.mp3")
     
     hook_audio = AudioFileClip("hook.mp3")
@@ -370,7 +362,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v78_cinematic.mp4"
+        out = "horror_v79_razor.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -388,7 +380,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSinematik Ritim Modu (V78)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nUstura Modu (V79)...\n")
         
         content = get_content(topic)
         
@@ -396,7 +388,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎼 -10% Hız | Dengeli Noktalama\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n⏳ Hedef: 28-30 Saniye\n🔪 Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
