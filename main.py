@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V72: FAIL-SAFE / GÜVENLİK AĞI) ---
+# --- AI İÇERİK (V73: DURDURULAMAZ - MUTLAKA ÇIKTI VERİR) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -72,9 +72,9 @@ def get_content(topic):
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
-    best_candidate = None # En iyi yedeği burada tutacağız
+    last_valid_data = None # En son çalışan veriyi burada saklayacağız
 
-    # --- DENETİM DÖNGÜSÜ ---
+    # --- DENETİM DÖNGÜSÜ (5 HAK) ---
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
@@ -105,7 +105,6 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
                         
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
@@ -124,7 +123,7 @@ def get_content(topic):
                             visual_queries.extend(EMERGENCY_SCENES)
                             visual_queries = list(dict.fromkeys(visual_queries))[:20]
 
-                        # Veriyi paketle
+                        # VERİYİ PAKETLE
                         current_data = {
                             "title": parts[0].strip(),
                             "hook": hook_text,
@@ -134,26 +133,26 @@ def get_content(topic):
                             "tags": " ".join(valid_tags)
                         }
 
-                        # YEDEK AL (Ne olur ne olmaz diye sakla)
-                        best_candidate = current_data
+                        # --- STRATEJİ: HER GEÇERLİ VERİYİ CEBE AT ---
+                        last_valid_data = current_data 
 
-                        # --- KATI KONTROL ---
-                        # Eğer 55-80 arasındaysa MÜKEMMEL, hemen dön.
+                        # --- MÜKEMMELİ ARA ---
+                        # Eğer 55-80 kelime arasındaysa DÖNGÜYÜ KIR ve hemen kullan.
                         if 55 <= word_count <= 80: 
                             print(f"✅ Mükemmel Uzunluk ({word_count}). Onaylandı.")
                             return current_data
                         
-                        # Değilse döngü devam etsin...
-                        print(f"⚠️ Uzunluk ideal değil ({word_count}). Tekrar deneniyor...")
+                        # Değilse, devam et ama last_valid_data zaten cebimizde.
+                        print(f"⚠️ Uzunluk ({word_count}) ideal değil. Tekrar deneniyor...")
 
         except: continue
 
-    # --- FAIL-SAFE (GÜVENLİK AĞI) ---
-    if best_candidate:
-        print("⚠️ İdeal uzunluk bulunamadı, en son üretilen içerik kullanılıyor (Fail-Safe).")
-        return best_candidate
+    # --- DÖNGÜ BİTTİ ---
+    if last_valid_data:
+        print("⚠️ İdeal uzunluk bulunamadı, eldeki EN SON veri kullanılıyor (Video Garantisi).")
+        return last_valid_data
     
-    print("❌ 5 denemede de hiçbir içerik üretilemedi (API Hatası olabilir).")
+    print("❌ 5 denemede de API formatı bozuk döndü (Çok nadir).")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -363,7 +362,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v72_failsafe.mp4"
+        out = "horror_v73_unstoppable.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -381,7 +380,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nFail-Safe Modu (V72)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nDurdurulamaz Mod (V73)...\n")
         
         content = get_content(topic)
         
