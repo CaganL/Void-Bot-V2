@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V83: AKILLI FİLTRE - ASLA BOŞ DÖNMEZ) ---
+# --- AI İÇERİK (V85: KARANLIK AKIŞ - -5% HIZ & BAĞLAÇLI YAPI) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,20 +57,22 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: TELEGRAPH STYLE (Prompt ile zorla, kod ile öldürme)
+    # PROMPT: DARK FLOW (-5% Speed Optimized)
+    # Hedef: 28-32 Saniye.
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 45-55 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **TELEGRAPH STYLE:**\n"
-        "   - Try to remove 'The', 'A', 'My', 'His' where possible.\n"
-        "   - *Target:* 'Head hit floor.' (Not 'My head hit the floor.')\n"
-        "2. **ACTION CHAIN:**\n"
-        "   - Grab -> Slip -> IMPACT -> Damage.\n"
-        "3. **SINGLE CLIMAX:**\n"
-        "   - End with ONE specific break: 'Femur snapped.' or 'Jaw crushed.'\n"
-        "4. **LENGTH:** 55-65 WORDS."
+        "1. **LENGTH:** STRICTLY 45-55 WORDS.\n"
+        "2. **FLOW CONTROL (CRITICAL):**\n"
+        "   - We are using a SLOW voice (-5%), so we cannot afford pauses.\n"
+        "   - **DO NOT** use short, choppy sentences with periods.\n"
+        "   - **USE** connectors: 'and', 'as', 'then', 'while' to keep the sentence moving.\n"
+        "   - *Bad:* 'I fell. Head hit. Blood ran.' (Too many pauses).\n"
+        "   - *Good:* 'I fell and my head hit the floor as blood ran down my neck.' (One flow).\n"
+        "3. **STYLE:** KINETIC & VISCERAL. No fillers.\n"
+        "4. **STRUCTURE:** Hook -> Action Chain -> Single Biological Climax."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -81,7 +83,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: REMOVE FILLER WORDS ('THE', 'A'). KEEP IT SHORT AND BRUTAL."
+            prompt += f"\n\nIMPORTANT: CONNECT SENTENCES WITH COMMAS. AVOID FULL STOPS TO SAVE TIME."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -108,7 +110,10 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
+                        period_count = script_text.count('.') # Nokta kontrolü
                         
+                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime, {period_count} Nokta")
+
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
@@ -135,25 +140,27 @@ def get_content(topic):
                             "tags": " ".join(valid_tags)
                         }
 
-                        # 🟢 KRİTİK DÜZELTME: Her geçerli formatı hemen yedeğe al
                         last_valid_data = current_data 
-                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime. (Yedeğe alındı)")
 
-                        # Mükemmeli Ara (55-75 arası)
-                        if 55 <= word_count <= 75: 
-                            print(f"✅ İdeal Uzunluk. Hemen kullanılıyor.")
-                            return current_data
-                        
-                        # İdeal değilse döngü devam eder, ama elimizde veri var.
+                        # --- KATI KONTROL (45-55 Kelime & AZ NOKTA) ---
+                        if 45 <= word_count <= 55:
+                            # Nokta sayısı 6'dan fazlaysa riskli (süre uzar), ama fail-safe için kaydettik.
+                            # İdeal olan 3-5 nokta.
+                            if period_count <= 6:
+                                print(f"✅ Mükemmel Akış ({word_count} kelime, {period_count} nokta). Onaylandı.")
+                                return current_data
+                            else:
+                                print(f"⚠️ Nokta sayısı biraz fazla ({period_count}). Daha iyisi aranıyor...")
+                        else:
+                            print(f"⚠️ Uzunluk ({word_count}) ideal değil. Tekrar deneniyor...")
 
         except: continue
 
-    # --- HATA VERMEK YASAK ---
     if last_valid_data:
-        print("⚠️ İdeal kriterler tutmadı ama EN SON ÜRETİLEN veri kullanılıyor (Hata önlendi).")
+        print("⚠️ İdeal kriterler tam tutmadı, en son veri kullanılıyor (Video Garantisi).")
         return last_valid_data
     
-    print("❌ API'den hiç veri dönmedi (İnternet/API sorunu).")
+    print("❌ İçerik üretilemedi.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -234,7 +241,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # HIZ: -5% (İdeal tempo)
+    # HIZ: -5% (İstediğin Ağır Korku Hızı)
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -364,7 +371,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v83_smart_filter.mp4"
+        out = "horror_v85_dark_flow.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -382,15 +389,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAkıllı Filtre Modu (V83)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKaranlık Akış Modu (V85)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Sistem hatası (Hiç içerik alınamadı).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Sistem hatası.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🧠 Akıllı Yasağı Kaldırma\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎼 Hız: -5% | Akış: Bağlaçlı\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
