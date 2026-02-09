@@ -38,15 +38,15 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ (Biyolojik Odaklı) ---
+# --- GARANTİ KORKU SAHNELERİ (Biyolojik ve Fiziksel) ---
 EMERGENCY_SCENES = [
     "dark shadow wall", "door handle turning", "broken mirror reflection", 
     "pale hand reaching", "person falling floor", "scary stairs", 
-    "feet dragging", "glass breaking", "bone x-ray", "blood drip",
-    "blurry vision point of view", "dizzy camera movement"
+    "feet dragging", "glass breaking", "blood drip", "medical bandage",
+    "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V56: BİYOLOJİK ÇÖKÜŞ) ---
+# --- AI İÇERİK (V57: 3 ADIMLI KÖPRÜ + BİYOLOJİK SONUÇ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,24 +57,25 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: PERSONAL RELATABILITY + BIOLOGICAL COLLAPSE
+    # PROMPT: ANATOMY OF FEAR (Structure Enforced)
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR, e.g. 'DO NOT LOOK HERE') ||| PUNCHY HOOK (Max 6 words, sensory) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Max 6 words, SENSORY ONLY) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (70-80 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. VISUAL_SCENES_LIST: Provide 15 visual nouns. Focus on BODY PARTS and IMPACT.\n"
-        "2. LENGTH: Script must be 55-65 words. (Target 30s).\n"
-        "3. **STYLE: RAW & PERSONAL (NO TECH JARGON):**\n"
-        "   - **Forbidden:** 'Sump pump', 'Wrench', 'Fuse box'.\n"
-        "   - **Required:** 'Drain', 'Darkness', 'Pipe', 'Cold'. Make it RELATABLE.\n"
-        "4. **MANDATORY SCRIPT STRUCTURE:**\n"
-        "   - **Trigger:** Simple event. 'I dropped my ring.' 'I heard a scratch.'\n"
-        "   - **The Bridge:** Hesitation. 'I bent down. Knees cracked. I reached in. I stopped.'\n"
-        "   - **Climax (Biological Collapse):** \n"
-        "     *BAD:* 'Gravity took me.'\n"
-        "     *GOOD:* 'Vision blurred. Knees buckled. I hit the tiles. I tasted blood.'\n"
-        "5. **TITLE:** Must be clickbait. Not generic."
+        "1. VISUAL_SCENES_LIST: Provide 15 visual nouns. Focus on BODY PARTS (Eye, Hand, Skin, Mouth) and IMPACT.\n"
+        "2. LENGTH: Script must be 70-80 words. (Target 28-32s). DO NOT MAKE IT SHORTER.\n"
+        "3. **HOOK RULES:**\n"
+        "   - **BANNED:** 'The cold crept in', 'Darkness fell'. (Poetry is banned).\n"
+        "   - **REQUIRED:** 'I felt a hand', 'I heard breathing', 'Something touched me'. (Sensory).\n"
+        "4. **MANDATORY 3-STEP BRIDGE (The Hesitation):**\n"
+        "   - Step 1: Action. ('I reached for the door').\n"
+        "   - Step 2: Freeze/Fear. ('My hand shook. I stopped. Gut twisted. I couldn't breathe').\n"
+        "   - Step 3: Forced Action. ('I had to look. I pulled the sheet').\n"
+        "5. **CLIMAX (Biological Collapse):**\n"
+        "   - End with VIOLENCE and BIOLOGY.\n"
+        "   - Use: 'Metallic taste in mouth', 'Vision blurred', 'Knees hit the tiles', 'Bone snapped', 'Nausea'.\n"
+        "   - NO 'Blackout'. NO 'I screamed'."
     )
     
     payload = {
@@ -291,7 +292,7 @@ def cold_horror_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
     desaturated = img_f * 0.3 + gray * 0.7 
-    tint_matrix = np.array([0.9, 1.0, 1.1])
+    tint_matrix = np.array([0.8, 0.9, 1.0])
     cold_img = desaturated * tint_matrix
     cold_img = cold_img * 0.6 
     return np.clip(cold_img, 0, 255).astype(np.uint8)
@@ -350,7 +351,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v56_biological_collapse.mp4"
+        out = "horror_v57_anatomy.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -369,7 +370,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nBiyolojik Çöküş Modu (V56)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKorku Anatomisi Modu (V57)...")
         
         content = get_content(topic)
         
@@ -377,7 +378,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🩸 Final: Görüş Bulanıklaşıyor\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🧠 3 Adımlı Tereddüt + Biyolojik Final\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
