@@ -38,14 +38,14 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ (Acil Durum Listesi) ---
+# --- GARANTİ KORKU SAHNELERİ ---
 EMERGENCY_SCENES = [
     "dark shadow wall", "creepy window night", "door handle turning", 
     "flickering light bulb", "broken mirror reflection", "dusty floor close up",
     "spider web dark", "pale hand reaching", "scary stairs", "moonlight forest"
 ]
 
-# --- AI İÇERİK (V52: ÇOĞALTICI MANTIK) ---
+# --- AI İÇERİK (V53: İÇGÜDÜSEL KORKU FORMÜLÜ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -56,16 +56,20 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
+    # PROMPT: 3 AŞAMALI FORMÜL + SOMUTLUK
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (65-75 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. VISUAL_SCENES_LIST: Provide 15 comma-separated visual nouns representing the scenes.\n"
-        "   - Example: 'doll, shadow, window, hand, door, floor, eye, lamp'\n"
-        "   - **DO NOT** write full sentences. Just keywords.\n"
-        "2. LENGTH: Script must be 50-60 words.\n"
-        "3. HOOK: Scary and spoken first. DO NOT REPEAT HOOK IN SCRIPT."
+        "1. VISUAL_SCENES_LIST: Provide 15 comma-separated visual nouns. (e.g., 'knife, hand, blood, door').\n"
+        "2. LENGTH: Script must be 65-75 words. (Target 30-35s).\n"
+        "3. HOOK: Concrete Sensory Detail (e.g., 'I hear breathing').\n"
+        "4. **SCRIPT STRUCTURE (MANDATORY):**\n"
+        "   - **Part 1 (Trigger):** Concrete start. 'I heard X', 'I saw X'.\n"
+        "   - **Part 2 (The Bridge/Hesitation):** Describe the PHYSICAL fear. Trembling hands, holding breath, slowly bending down, heart pounding. **Spend time here.**\n"
+        "   - **Part 3 (The Climax):** VIOLENT/PHYSICAL ending. Not just 'it looked at me'. Use: 'It grabbed my ankle', 'Bones crunched', 'Skin tore', 'Dragged me under'.\n"
+        "5. **STYLE:** NO POETRY. NO 'Mysterious atmosphere'. Use BIOLOGICAL words: Skin, breath, sweat, bone, cold, pain."
     )
     
     payload = {
@@ -90,34 +94,25 @@ def get_content(topic):
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
-                        # --- GEMINI LİSTESİNİ TEMİZLE ---
+                        # Görsel listesini temizle ve çoğalt
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
-                        # --- V52 KRİTİK MÜDAHALE: LİSTE ÇOĞALTMA ---
-                        # Eğer Gemini 10'dan az kelime verdiyse (ki veriyor), listeyi zorla genişlet.
                         if len(visual_queries) < 12:
-                            print(f"⚠️ Gemini tembellik yaptı ({len(visual_queries)} kelime). Liste çoğaltılıyor...")
-                            
+                            print(f"⚠️ Liste genişletiliyor...")
                             expanded_queries = []
-                            # Mevcut kelimelerin varyasyonlarını üret
                             for q in visual_queries:
                                 expanded_queries.append(f"{q} close up")
                                 expanded_queries.append(f"{q} scary")
                                 expanded_queries.append(f"{q} dark cinematic")
-                            
-                            # Orijinal listeyi genişlet
                             visual_queries.extend(expanded_queries)
-                            
-                            # Hala yetmezse Acil Durum Listesinden ekle
                             random.shuffle(EMERGENCY_SCENES)
                             visual_queries.extend(EMERGENCY_SCENES)
-                            
-                            # Tekrarları temizle ve ilk 20 tanesini al
                             visual_queries = list(dict.fromkeys(visual_queries))[:20]
 
                         hook_text = parts[1].strip()
                         script_text = parts[3].strip()
+                        # Hook tekrarı koruması
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
@@ -130,7 +125,6 @@ def get_content(topic):
                             "tags": " ".join(valid_tags)
                         }
                         print(f"✅ İçerik alındı ({model})")
-                        print(f"🔍 Genişletilmiş Arama Listesi: {visual_queries}")
                         return data
         except: continue
 
@@ -197,7 +191,7 @@ def smart_scene_search(query):
     if not link: link = search_pixabay(query)
     if link: return link
 
-    # 2. Son 2 Kelime (Basitleştirme)
+    # 2. Son 2 Kelime
     words = query.split()
     if len(words) > 2:
         simple_query = " ".join(words[-2:])
@@ -219,7 +213,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # SES
+    # SES (Hook + Pause + Script)
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -244,7 +238,7 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
-    # DÖNGÜ: LİSTE GENİŞLETİLDİĞİ İÇİN ARTIK DAHA FAZLA VİDEO DENECEK
+    # ARAMA DÖNGÜSÜ
     for query in visual_queries:
         if current_duration >= total_duration: break
         
@@ -266,15 +260,13 @@ async def generate_resources(content):
             except:
                 if os.path.exists(path): os.remove(path)
 
-    # ACİL DURUM DÖNGÜSÜ (Hala süre dolmadıysa)
+    # LOOP YETMEZSE
     loop_limit = 0
     while current_duration < total_duration:
         if loop_limit > 5: break
-        # Listeyi karıştırıp tekrar dene
         random.shuffle(visual_queries)
         for query in visual_queries:
              if current_duration >= total_duration: break
-             # Kelime sonuna "horror" ekleyip tekrar dene
              video_link = smart_scene_search(f"{query} horror")
              if video_link and video_link not in used_links:
                 try:
@@ -353,7 +345,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v52_list_multiplier.mp4"
+        out = "horror_v53_visceral.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -372,7 +364,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nListe Çoğaltıcı Mod (V52)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nİçgüdüsel Korku Modu (V53)...")
         
         content = get_content(topic)
         
@@ -380,7 +372,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🔍 {len(content['visual_queries'])} Farklı Arama Yapılıyor\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🩸 Formül: Somut -> Tereddüt -> Acı\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
