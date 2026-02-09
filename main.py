@@ -38,14 +38,14 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ ---
+# --- GARANTİ KORKU SAHNELERİ (Şiddet ve Gerilim Eklendi) ---
 EMERGENCY_SCENES = [
-    "dark shadow wall", "creepy window night", "door handle turning", 
-    "flickering light bulb", "broken mirror reflection", "dusty floor close up",
-    "spider web dark", "pale hand reaching", "scary stairs", "moonlight forest"
+    "dark shadow wall", "door handle turning", "broken mirror reflection", 
+    "pale hand reaching", "person falling floor", "scary stairs", 
+    "feet dragging", "glass breaking", "bone x-ray", "blood drip"
 ]
 
-# --- AI İÇERİK (V54: KESİK & HAM STİL) ---
+# --- AI İÇERİK (V55: KOREOGRAFİ VE BİYOLOJİK BEDEL) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -56,23 +56,22 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: STACCATO STYLE (KESİK CÜMLELER, HAM ANLATIM)
+    # PROMPT: THE BUTCHER FORMULA (Action -> Hesitation -> Physical Consequence)
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. VISUAL_SCENES_LIST: Provide 15 comma-separated visual nouns. (e.g., 'phone, wire, hand, blood, floor').\n"
-        "2. LENGTH: Script must be 50-60 words. (Target 25-28s).\n"
-        "3. HOOK: Immediate Action/Danger. (e.g., 'My phone unlocked itself').\n"
-        "4. **STYLE: STACCATO & RAW (VERY IMPORTANT):**\n"
-        "   - **NO POETRY.** Do not say 'The air grew cold'.\n"
-        "   - **NO SIMILES.** Do not say 'It sounded like...'. Say 'Something snapped'.\n"
-        "   - **SHORT SENTENCES.** Subject + Verb. 'I froze. Heart pounded. It moved.'\n"
-        "5. **STRUCTURE:**\n"
-        "   - **Trigger:** Object moved/changed. Concrete.\n"
-        "   - **Bridge:** Physical freeze. Breath held. Hand shaking. (Fast pace).\n"
-        "   - **Climax:** VIOLENCE. Bone snap. Skin tear. Impact with floor. Blackout."
+        "1. VISUAL_SCENES_LIST: Provide 15 visual nouns. Focus on BODY PARTS and IMPACT (e.g., 'hand, sweat, floor, bone, door, eye').\n"
+        "2. LENGTH: Script must be 55-65 words. (Target 30s).\n"
+        "3. **STYLE: STACCATO & BIOLOGICAL.** Use short sentences. Focus on physical sensations (Sweat, Shaking, Pain, Gravity).\n"
+        "4. **MANDATORY SCRIPT STRUCTURE:**\n"
+        "   - **Trigger:** Concrete event (Sound/Movement). 'Knob turned.'\n"
+        "   - **The Bridge (Hesitation):** Character MUST try to act, stop, then try again. \n"
+        "     *Example:* 'I stood up. Hand shook. I reached out. I stopped. I reached again.'\n"
+        "   - **Climax (Biological Cost):** NO 'BLACKOUT'. NO 'DARKNESS'. \n"
+        "     *Requirement:* Physical damage or collapse. 'Fingers crushed. Bone snapped. Knees failed. Floor hit my face.'\n"
+        "5. **FORBIDDEN ENDINGS:** Do not end with 'Everything went black' or 'I screamed'. End with the IMPACT."
     )
     
     payload = {
@@ -97,12 +96,12 @@ def get_content(topic):
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
-                        # Görsel listesini temizle ve çoğalt (V52 Mantığı)
+                        # Görsel listesini temizle
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
+                        # Liste Çoğaltıcı (V52 Mantığı)
                         if len(visual_queries) < 12:
-                            print(f"⚠️ Liste genişletiliyor...")
                             expanded_queries = []
                             for q in visual_queries:
                                 expanded_queries.append(f"{q} close up")
@@ -217,7 +216,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # SES (Hook + Pause + Script)
+    # SES
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -349,7 +348,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v54_raw_cut.mp4"
+        out = "horror_v55_the_butcher.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -368,7 +367,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHam Korku Modu (V54)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKasap Modu (V55)...")
         
         content = get_content(topic)
         
@@ -376,7 +375,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n✂️ Kesik Cümleler & Biyolojik Final\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🦴 Kemik Kırma Finali Aktif\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
