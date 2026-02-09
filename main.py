@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V70: AKIŞKAN KORKU - AZ NOKTA, ÇOK VİRGÜL) ---
+# --- AI İÇERİK (V71: GENİŞLETİLMİŞ AKIŞ - 60/75 KELİME) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,20 +57,21 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: LIQUID FEAR (Combine actions to reduce TTS pauses)
+    # PROMPT: EXTENDED FLOW (60-75 WORDS)
+    # Hedef: Akışkan yapıyı koru ama süreyi uzat.
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (45-55 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 60-75 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **SPEED CONTROL (FIXING THE PAUSE ISSUE):**\n"
-        "   - **PROBLEM:** Too many periods (.) make the video too long.\n"
-        "   - **SOLUTION:** Group actions. Use commas. Don't stop after every word.\n"
-        "   - *BAD:* 'Hand shook. I stopped. Gut twisted.' (Too slow).\n"
-        "   - *GOOD:* 'Hand shook and gut twisted as I froze in place.' (Faster flow).\n"
-        "2. **STYLE:** Still use simple, physical words. No fancy vocabulary.\n"
+        "1. **LENGTH CONTROL (TARGET: 30-33 SECONDS):**\n"
+        "   - **RANGE:** Must be between 60 and 75 words.\n"
+        "   - Reason: We use a fast reading style, so we need MORE words to fill the time.\n"
+        "2. **STYLE: LIQUID FEAR:**\n"
+        "   - Use commas to connect actions. Don't stop too often.\n"
+        "   - Use PHYSICAL details to add length. Describe the sweat, the shaking, the pain.\n"
         "3. **HOOK:** 'I [Heard/Saw] [Thing] in [Location]'.\n"
-        "4. **LENGTH:** 45-55 words. Focus on FLOW."
+        "4. **STRUCTURE:** Trigger -> Freeze -> Collapse."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -79,7 +80,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: PREVIOUS SCRIPT HAD TOO MANY FULL STOPS. USE COMMAS TO CONNECT SENTENCES."
+            prompt += f"\n\nIMPORTANT: YOUR LAST SCRIPT WAS WRONG LENGTH. I NEED STRICTLY 60-75 WORDS. ADD MORE DETAIL."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -105,21 +106,20 @@ def get_content(topic):
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
-                        # --- KELİME ARALIĞI KONTROLÜ ---
+                        # --- KELİME ARALIĞI KONTROLÜ (V71) ---
                         word_count = len(script_text.split())
-                        period_count = script_text.count('.') # Nokta sayısını kontrol et
-                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime, {period_count} Nokta")
+                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
 
-                        # Kelime sayısı: 40-60 arası (Esnek)
-                        if word_count < 40 or word_count > 60: 
-                            print(f"❌ Kelime sayısı uygunsuz ({word_count}).")
+                        # Alt sınır: 55 | Üst sınır: 80 (Genişletilmiş Aralık)
+                        if word_count < 55: 
+                            print(f"❌ Çok kısa ({word_count}). Uzatılıyor...")
                             continue 
                         
-                        # Nokta sayısı kontrolü: 12'den fazlaysa çok duraksama var demektir
-                        if period_count > 12:
-                            print(f"❌ Çok fazla nokta ({period_count}). Video yavaşlar. Reddedildi.")
+                        if word_count > 80:
+                            print(f"❌ Çok uzun ({word_count}). Kısaltılıyor...")
                             continue
 
+                        # Akademik dil kontrolü
                         forbidden_words = ["fear", "terror", "dread", "scared", "originated", "intensified"]
                         if any(word in script_text.lower() for word in forbidden_words):
                              print("❌ Yasaklı kelime var. Reddedildi.")
@@ -150,11 +150,11 @@ def get_content(topic):
                             "visual_queries": visual_queries,
                             "tags": " ".join(valid_tags)
                         }
-                        print(f"✅ İçerik ONAYLANDI ({current_model}) - Akışkan Mod")
+                        print(f"✅ İçerik ONAYLANDI ({current_model}) - {word_count} Kelime (30-33sn Hedefi)")
                         return data
         except: continue
 
-    print("❌ 5 denemede de uygun içerik alınamadı.")
+    print("❌ 5 denemede de uygun aralıkta metin alınamadı.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -364,8 +364,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v70_liquid.mp4"
-        # Yüksek Kalite
+        out = "horror_v71_extended_flow.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -383,15 +382,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAkışkan Korku Modu (V70)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nGenişletilmiş Akış Modu (V71)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Uygun içerik üretilemedi.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Uygun uzunlukta (55-80 kelime) içerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n💧 Az Nokta, Çok Akış\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n✅ Hedef: 60-75 Kelime\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
