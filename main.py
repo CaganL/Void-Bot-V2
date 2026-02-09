@@ -38,14 +38,15 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ (Şiddet ve Gerilim Eklendi) ---
+# --- GARANTİ KORKU SAHNELERİ (Biyolojik Odaklı) ---
 EMERGENCY_SCENES = [
     "dark shadow wall", "door handle turning", "broken mirror reflection", 
     "pale hand reaching", "person falling floor", "scary stairs", 
-    "feet dragging", "glass breaking", "bone x-ray", "blood drip"
+    "feet dragging", "glass breaking", "bone x-ray", "blood drip",
+    "blurry vision point of view", "dizzy camera movement"
 ]
 
-# --- AI İÇERİK (V55: KOREOGRAFİ VE BİYOLOJİK BEDEL) ---
+# --- AI İÇERİK (V56: BİYOLOJİK ÇÖKÜŞ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -56,22 +57,24 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: THE BUTCHER FORMULA (Action -> Hesitation -> Physical Consequence)
+    # PROMPT: PERSONAL RELATABILITY + BIOLOGICAL COLLAPSE
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR, e.g. 'DO NOT LOOK HERE') ||| PUNCHY HOOK (Max 6 words, sensory) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. VISUAL_SCENES_LIST: Provide 15 visual nouns. Focus on BODY PARTS and IMPACT (e.g., 'hand, sweat, floor, bone, door, eye').\n"
+        "1. VISUAL_SCENES_LIST: Provide 15 visual nouns. Focus on BODY PARTS and IMPACT.\n"
         "2. LENGTH: Script must be 55-65 words. (Target 30s).\n"
-        "3. **STYLE: STACCATO & BIOLOGICAL.** Use short sentences. Focus on physical sensations (Sweat, Shaking, Pain, Gravity).\n"
+        "3. **STYLE: RAW & PERSONAL (NO TECH JARGON):**\n"
+        "   - **Forbidden:** 'Sump pump', 'Wrench', 'Fuse box'.\n"
+        "   - **Required:** 'Drain', 'Darkness', 'Pipe', 'Cold'. Make it RELATABLE.\n"
         "4. **MANDATORY SCRIPT STRUCTURE:**\n"
-        "   - **Trigger:** Concrete event (Sound/Movement). 'Knob turned.'\n"
-        "   - **The Bridge (Hesitation):** Character MUST try to act, stop, then try again. \n"
-        "     *Example:* 'I stood up. Hand shook. I reached out. I stopped. I reached again.'\n"
-        "   - **Climax (Biological Cost):** NO 'BLACKOUT'. NO 'DARKNESS'. \n"
-        "     *Requirement:* Physical damage or collapse. 'Fingers crushed. Bone snapped. Knees failed. Floor hit my face.'\n"
-        "5. **FORBIDDEN ENDINGS:** Do not end with 'Everything went black' or 'I screamed'. End with the IMPACT."
+        "   - **Trigger:** Simple event. 'I dropped my ring.' 'I heard a scratch.'\n"
+        "   - **The Bridge:** Hesitation. 'I bent down. Knees cracked. I reached in. I stopped.'\n"
+        "   - **Climax (Biological Collapse):** \n"
+        "     *BAD:* 'Gravity took me.'\n"
+        "     *GOOD:* 'Vision blurred. Knees buckled. I hit the tiles. I tasted blood.'\n"
+        "5. **TITLE:** Must be clickbait. Not generic."
     )
     
     payload = {
@@ -100,7 +103,7 @@ def get_content(topic):
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
-                        # Liste Çoğaltıcı (V52 Mantığı)
+                        # Liste Çoğaltıcı
                         if len(visual_queries) < 12:
                             expanded_queries = []
                             for q in visual_queries:
@@ -115,7 +118,6 @@ def get_content(topic):
                         hook_text = parts[1].strip()
                         script_text = parts[3].strip()
                         
-                        # Hook tekrarı koruması
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
@@ -289,7 +291,7 @@ def cold_horror_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
     desaturated = img_f * 0.3 + gray * 0.7 
-    tint_matrix = np.array([0.8, 0.9, 1.0])
+    tint_matrix = np.array([0.9, 1.0, 1.1])
     cold_img = desaturated * tint_matrix
     cold_img = cold_img * 0.6 
     return np.clip(cold_img, 0, 255).astype(np.uint8)
@@ -348,7 +350,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v55_the_butcher.mp4"
+        out = "horror_v56_biological_collapse.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -367,7 +369,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKasap Modu (V55)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nBiyolojik Çöküş Modu (V56)...")
         
         content = get_content(topic)
         
@@ -375,7 +377,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🦴 Kemik Kırma Finali Aktif\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🩸 Final: Görüş Bulanıklaşıyor\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
