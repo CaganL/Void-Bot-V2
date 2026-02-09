@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V86: RİTMİK DEHŞET - 3 NOKTA KURALI) ---
+# --- AI İÇERİK (V88: 4 CÜMLELİ YAPI - KUSURSUZ AKIŞ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,20 +57,22 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: 3-DOT RHYTHM
-    # Hedef: Akış + Es + Darbe
+    # PROMPT: 4 SENTENCE STRUCTURE
+    # Bu yapı doğal olarak 25-33 saniye arasına oturur.
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 45-55 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
-        "CRITICAL RULES:\n"
-        "1. **RHYTHM CONTROL (THE 3-DOT RULE):**\n"
-        "   - You must use EXACTLY 3 Full Stops (Periods) in the entire text.\n"
-        "   - Use commas for the rest to keep flow.\n"
-        "   - *Structure:* [Setup + Flow], [Action + Flow]. [PAUSE]. [Climax].\n"
-        "2. **LENGTH:** 45-55 WORDS. (Ideal for -5% speed).\n"
-        "3. **STYLE:** Raw, Physical, Visceral. No 'I felt scared'.\n"
-        "4. **ENDING:** Biological damage (Broken bone / Tearing)."
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (EXACTLY 4 SENTENCES) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CRITICAL RULES (NATURAL FLOW):\n"
+        "1. **STRUCTURE (THE 4 SENTENCES):**\n"
+        "   - Sentence 1: The Setup (What do you see/hear?).\n"
+        "   - Sentence 2: The Action (Something moves/grabs).\n"
+        "   - Sentence 3: The Impact (Physical pain/fall).\n"
+        "   - Sentence 4: The Final Horror (Biological damage/Death).\n"
+        "2. **STYLE:** Use connectors (and, but, then) to make it flow naturally.\n"
+        "   - *Example:* 'I looked down and saw a hand, then it grabbed my ankle tightly.'\n"
+        "3. **CONTENT:** Make it scary and physical. Bone breaking, blood, screaming.\n"
+        "4. **LENGTH:** Just stick to 4 solid sentences. Not too short, not too long."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -81,7 +83,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: USE EXACTLY 3 PERIODS. COUNT THEM."
+            prompt += f"\n\nIMPORTANT: WRITE EXACTLY 4 SENTENCES. MAKE IT SCARY."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -108,10 +110,7 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        period_count = script_text.count('.') # Nokta sayısını say
                         
-                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime, {period_count} Nokta")
-
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
@@ -138,26 +137,28 @@ def get_content(topic):
                             "tags": " ".join(valid_tags)
                         }
 
+                        # --- GÜVENLİK AĞI: Her geçerli formatı kaydet ---
                         last_valid_data = current_data 
+                        
+                        # --- GENİŞ ARALIK KONTROLÜ (35-75 Kelime) ---
+                        # Bu aralık çok geniştir, neredeyse her mantıklı hikayeyi kabul eder.
+                        # Amaç sadece "tek kelime" veya "roman" yazılmasını engellemek.
+                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime. (Yedeğe alındı)")
 
-                        # --- KATI KONTROL ---
-                        # 45-55 Kelime ARTI 2 ile 4 arası nokta (İdeal 3 ama esnek olsun)
-                        if 45 <= word_count <= 55:
-                            if 2 <= period_count <= 4:
-                                print(f"✅ Mükemmel Ritim ({period_count} Nokta). Onaylandı.")
-                                return current_data
-                            else:
-                                print(f"⚠️ Nokta sayısı uymadı ({period_count}).")
-                        else:
-                            print(f"⚠️ Kelime sayısı uymadı ({word_count}).")
+                        if 35 <= word_count <= 75: 
+                            print(f"✅ Uygun İçerik. Hemen Kullanılıyor.")
+                            return current_data
+                        
+                        # Eğer çok saçma bir uzunluktaysa (örn 10 kelime veya 100 kelime), tekrar dene.
 
         except: continue
 
+    # --- ASLA BOŞ DÖNME ---
     if last_valid_data:
-        print("⚠️ İdeal ritim tam tutmadı, en son veri kullanılıyor.")
+        print("🛡️ İdeal aralık tam tutmasa bile ELDEKİ VERİ kullanılıyor.")
         return last_valid_data
     
-    print("❌ İçerik üretilemedi.")
+    print("❌ API Hatası (İnternet bağlantısını kontrol edin).")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -238,7 +239,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # HIZ: -5% (İdeal atmosfer)
+    # HIZ: -5% (En iyi korku atmosferi)
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -368,7 +369,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v86_rhythm.mp4"
+        out = "horror_v88_four_sentences.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -386,15 +387,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nRitmik Dehşet Modu (V86)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n4 Cümleli Yapı (V88)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Kritik hata.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎼 3 Nokta Kuralı\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🏗️ Doğal Yapı: 4 Cümle\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
