@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V60: CERRAHİ KESİNLİK) ---
+# --- AI İÇERİK (V61: HECE KATİLİ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,27 +57,26 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: THE SURGEON (No Emotions, Only Biology)
+    # PROMPT: SYLLABLE SLASHER (Short words, choppy sentences)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Max 6 words, SPECIFIC LOCATION) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (60-65 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Strict Formula) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **LENGTH:** Script MUST be 60-65 words. (Target 28s). No filler.\n"
-        "2. **HOOK GPS LOCK:**\n"
-        "   - You MUST mention the specific object/location in the Hook.\n"
-        "   - BAD: 'I heard a sound outside.' (Too vague).\n"
-        "   - GOOD: 'I heard breathing under my car.'\n"
-        "3. **STYLE: MEDICAL/MECHANICAL:**\n"
-        "   - DELETE EMOTIONS. Do not use words like 'Fear', 'Terror', 'Scared', 'Horror', 'Spooky'.\n"
-        "   - USE BIOLOGY. Use 'Sweat', 'Bone', 'Blood', 'Pulse', 'Nausea'.\n"
-        "4. **MANDATORY 3-STEP BRIDGE:**\n"
-        "   - Action: 'I bent down.'\n"
-        "   - Hesitation: 'Hand shook. Breath stopped. I froze.'\n"
-        "   - Forced Action: 'I had to look.'\n"
-        "5. **CLIMAX (Pure Trauma):**\n"
-        "   - BAD: 'I felt hot fear.' (Poetic/Emotional).\n"
-        "   - GOOD: 'Face hit asphalt. Teeth cracked. Mouth filled with copper. Vision went black.' (Physical)."
+        "1. **THE SYLLABLE SLASHER (SPEED IS KEY):**\n"
+        "   - **USE SHORT WORDS.** Mostly 1-2 syllables. \n"
+        "   - **BANNED WORDS:** 'Originated', 'Intensified', 'Temperature', 'Immediately', 'Exhalation', 'Spiked'.\n"
+        "   - **GOOD WORDS:** 'Wet', 'Hot', 'Skin', 'Bone', 'Blood', 'Back', 'Seat', 'Now'.\n"
+        "2. **GRAMMAR:** NO COMMAS. NO 'AND'. Use periods. Make it choppy.\n"
+        "   - BAD: 'I turned around, and then I saw it.'\n"
+        "   - GOOD: 'I turned. I saw it.'\n"
+        "3. **HOOK FORMULA (GPS LOCK):**\n"
+        "   - Must be: 'I [Heard/Saw/Felt] [Thing] in [Specific Location]'.\n"
+        "   - Example: 'I heard breathing in my back seat.'\n"
+        "4. **STRUCTURE:**\n"
+        "   - Trigger -> 3-Step Freeze -> Biological Damage.\n"
+        "   - Climax must be physical: 'Teeth cracked. Tasted copper.'\n"
+        "5. **LENGTH:** 55-65 words. (Target 28s)."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -86,8 +85,8 @@ def get_content(topic):
     for attempt in range(3):
         prompt = base_prompt
         if attempt > 0:
-            print(f"⚠️ Deneme {attempt+1}: Metin kriterlere uymadı, tekrar deneniyor...")
-            prompt += f"\n\nIMPORTANT: PREVIOUS ATTEMPT FAILED. REMOVE ALL EMOTION WORDS. MAKE IT PURELY PHYSICAL. ENSURE WORD COUNT IS 60-65."
+            print(f"⚠️ Deneme {attempt+1}: Kriterlere uyulmadı, tekrar deneniyor...")
+            prompt += f"\n\nIMPORTANT: PREVIOUS ATTEMPT FAILED. USE SHORTER WORDS. NO COMMAS. MAKE IT CHOPPY."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -110,7 +109,6 @@ def get_content(topic):
                         script_text = parts[3].strip()
                         hook_text = parts[1].strip()
                         
-                        # Hook tekrarı temizliği
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
@@ -118,12 +116,18 @@ def get_content(topic):
                         word_count = len(script_text.split())
                         print(f"📊 Kelime Sayısı: {word_count}")
 
-                        # 55'ten azsa veya 80'den çoksa reddet (Çok uzun da olmasın)
-                        if word_count < 55:
-                            print(f"❌ Metin çok kısa ({word_count} kelime).")
+                        # 50'den azsa (çok kısa) veya 70'den çoksa (çok uzun) reddet
+                        if word_count < 50 or word_count > 75:
+                            print(f"❌ Metin uzunluğu uygunsuz ({word_count} kelime).")
                             time.sleep(1)
                             continue 
                         
+                        # --- YASAKLI KELİME KONTROLÜ (AKADEMİK DİL) ---
+                        academic_words = ["originated", "intensified", "temperature", "immediately", "simultaneously"]
+                        if any(word in script_text.lower() for word in academic_words):
+                             print("❌ Akademik dil tespit edildi. Reddediliyor.")
+                             continue
+
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
@@ -372,7 +376,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v60_surgical_precision.mp4"
+        out = "horror_v61_syllable_slasher.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -391,7 +395,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nCerrahi Kesinlik Modu (V60)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHece Katili Modu (V61)...")
         
         content = get_content(topic)
         
@@ -399,7 +403,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🚫 Duygu Yok, Sadece Travma\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n✂️ Kısa Kelimeler & Kesik Cümleler\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
