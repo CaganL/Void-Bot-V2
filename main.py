@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V68: YOĞUN ANLATIM - 45/60 ARALIĞI) ---
+# --- AI İÇERİK (V69: HASSAS ZAMANLAYICI - 45/55 ARALIĞI) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,16 +57,15 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: DENSE NARRATIVE (45-60 WORDS)
-    # Hedef: Az kelime ama çok olay.
+    # PROMPT: STRICT RANGE (45-55 WORDS) -> TARGET 28-35 SECONDS
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 45-60 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 45-55 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **LENGTH CONTROL:**\n"
-        "   - **RANGE:** Must be between 45 and 60 words. (Target ~35 seconds).\n"
-        "   - **DENSITY:** Make every word count. Don't say 'I was scared'. Say 'Blood froze'.\n"
+        "1. **LENGTH CONTROL (TARGET: 28-35 SECONDS):**\n"
+        "   - **RANGE:** Must be between 45 and 55 words. No more, no less.\n"
+        "   - **DENSITY:** Every word must describe a PHYSICAL SENSATION.\n"
         "2. **STYLE: CAVEMAN TELEGRAPH:**\n"
         "   - Drop 'The', 'A', 'An'. No emotions. Use PHYSICAL words.\n"
         "3. **HOOK:** 'I [Heard/Saw] [Thing] in [Location]'.\n"
@@ -79,7 +78,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: YOUR LAST SCRIPT WAS WRONG LENGTH. I NEED STRICTLY 45-60 WORDS. COUNT THEM!"
+            prompt += f"\n\nIMPORTANT: YOUR LAST SCRIPT WAS WRONG LENGTH. I NEED STRICTLY 45-55 WORDS. COUNT THEM!"
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -105,16 +104,16 @@ def get_content(topic):
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
-                        # --- KELİME ARALIĞI KONTROLÜ (V68) ---
+                        # --- KELİME ARALIĞI KONTROLÜ (V69) ---
                         word_count = len(script_text.split())
                         print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
 
-                        # Alt sınır: 45 | Üst sınır: 60 (Daha sıkı aralık)
+                        # Alt sınır: 45 | Üst sınır: 55 (Çok Hassas Aralık)
                         if word_count < 45: 
                             print(f"❌ Çok kısa ({word_count}). Uzatılıyor...")
                             continue 
                         
-                        if word_count > 60:
+                        if word_count > 55:
                             print(f"❌ Çok uzun ({word_count}). Kısaltılıyor...")
                             continue
 
@@ -149,7 +148,7 @@ def get_content(topic):
                             "visual_queries": visual_queries,
                             "tags": " ".join(valid_tags)
                         }
-                        print(f"✅ İçerik ONAYLANDI ({current_model}) - {word_count} Kelime (Yoğun Anlatım)")
+                        print(f"✅ İçerik ONAYLANDI ({current_model}) - {word_count} Kelime (28-35sn Hedefi)")
                         return data
         except: continue
 
@@ -363,8 +362,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v68_dense.mp4"
-        # Yüksek Kalite
+        out = "horror_v69_precision.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -382,15 +380,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nYoğun Anlatım Modu (V68)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHassas Zamanlayıcı Modu (V69)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Uygun uzunlukta (45-60 kelime) içerik üretilemedi.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Uygun uzunlukta (45-55 kelime) içerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n✅ Hedef: 45-60 Kelime\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n✅ Hedef: 28-35 Saniye\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
