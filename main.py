@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V79: USTURA AĞZI - HASSAS KISALTMA) ---
+# --- AI İÇERİK (V80: DUBLÖR MODU - UFC STİLİ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,20 +57,19 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: TRIMMED FOR SPEED (45-55 WORDS)
-    # Hedef: 28-30 Saniye.
+    # PROMPT: UFC FIGHT LOG / MEDICAL REPORT STYLE
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
         "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 45-55 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **LENGTH CONTROL (TARGET: 28-30 SECONDS):**\n"
-        "   - **RANGE:** Must be between 45 and 55 words.\n"
-        "   - **CUT THE FAT:** Do NOT start with 'I was just...', 'Suddenly...', 'Then...'.\n"
-        "   - Start directly with the SENSATION or ACTION.\n"
-        "2. **STYLE:** KINETIC & RAW. Use commas to keep it moving.\n"
-        "3. **HOOK:** 'I [Heard/Saw] [Thing] in [Location]'.\n"
-        "4. **STRUCTURE:** Trigger -> Physical Contact -> Biological Collapse."
+        "1. **STYLE: UFC FIGHT / TRAUMA REPORT:**\n"
+        "   - **NO POETRY:** Banned: 'Heart thrashed', 'Blood cooled to sludge', 'Blinding eyes'.\n"
+        "   - **USE:** 'Bone cracked', 'Teeth broke', 'Skin tore', 'Face hit tile'.\n"
+        "2. **ACTION CHAIN (MANDATORY):**\n"
+        "   - Grab -> Slip -> IMPACT (Must hit head/face on floor) -> Damage -> Drag.\n"
+        "3. **ENDING:** Must be BIOLOGICAL. 'Drain swallowed my arm.' 'Mouth filled with blood.'\n"
+        "4. **LENGTH:** 45-55 WORDS. Use commas to keep flow."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -79,7 +78,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: PREVIOUS SCRIPT WAS TOO LONG. I NEED STRICTLY 45-55 WORDS. CUT 10 WORDS."
+            prompt += f"\n\nIMPORTANT: REMOVE POETRY. ADD MORE VIOLENCE. MAKE IT LIKE A STUNT SCENE."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -108,20 +107,21 @@ def get_content(topic):
                         word_count = len(script_text.split())
                         print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
 
-                        # Hedef: 45-55 Kelime (Bu aralık 28-30 saniye için ideal)
+                        # Hedef: 45-55 Kelime (27 saniye civarı için ideal)
                         if word_count < 45: 
                             print(f"⚠️ Çok kısa ({word_count}). Uzatılıyor...")
                             continue 
                         
-                        if word_count > 55:
+                        if word_count > 60: # 55 ideali ama 60'a kadar esneme payı
                             print(f"⚠️ Çok uzun ({word_count}). Kısaltılıyor...")
                             continue
 
-                        # Klişe Kontrolü
-                        cliches = ["silent scream", "blood ran cold", "shiver down"]
-                        if any(c in script_text.lower() for c in cliches):
-                            continue
-
+                        # Şiirsel/Soyut Kelime Kontrolü
+                        poetic_words = ["thrashed", "sludge", "blinding", "darkness took", "silent scream"]
+                        if any(w in script_text.lower() for w in poetic_words):
+                             print("❌ Şiirsel dil tespit edildi. Reddedildi.")
+                             continue
+                        
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
@@ -147,11 +147,11 @@ def get_content(topic):
                             "visual_queries": visual_queries,
                             "tags": " ".join(valid_tags)
                         }
-                        print(f"✅ İçerik ONAYLANDI ({current_model}) - Ustura Modu")
+                        print(f"✅ İçerik ONAYLANDI ({current_model}) - Dublör Modu")
                         return data
         except: continue
 
-    print("❌ 5 denemede de uygun aralıkta metin alınamadı.")
+    print("❌ 5 denemede de uygun içerik alınamadı.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -232,7 +232,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # HIZ GÜNCELLEMESİ: -10% yerine -5% (Biraz hızlandırdık)
+    # HIZ: -5% (İdeal tempo)
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -362,7 +362,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v79_razor.mp4"
+        out = "horror_v80_stuntman.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -380,15 +380,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nUstura Modu (V79)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nDublör Modu (V80)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Sistem hatası.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n⏳ Hedef: 28-30 Saniye\n🔪 Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🦴 UFC Stili & Kırık Kemik\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
