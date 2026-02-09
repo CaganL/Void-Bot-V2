@@ -38,7 +38,7 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ (Biyolojik ve Fiziksel) ---
+# --- GARANTİ KORKU SAHNELERİ ---
 EMERGENCY_SCENES = [
     "dark shadow wall", "door handle turning", "broken mirror reflection", 
     "pale hand reaching", "person falling floor", "scary stairs", 
@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V58: MANTIK KİLİDİ + FİZİKSEL NEDEN-SONUÇ) ---
+# --- AI İÇERİK (V59: KELİME SAYACI & ZORLAMA DÖNGÜSÜ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,40 +57,44 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: LOGIC LOCK & CAUSE-EFFECT
-    prompt = (
+    # PROMPT: STRICT LENGTH & STRUCTURE
+    base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Max 6 words, 'I' + Verb) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (60-70 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Max 6 words, 'I' + Verb + Noun) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (MINIMUM 60 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. **CONTEXT LOCK (VERY IMPORTANT):** \n"
-        "   - If topic is 'Car', stick to 'Asphalt, Tire, Metal'. DO NOT use 'Tiles, Sheet, Bed'.\n"
-        "   - If topic is 'Bed', stick to 'Blanket, Pillow, Carpet'. DO NOT use 'Streetlights'.\n"
-        "   - **LOGIC ERROR = FAIL.**\n"
-        "2. LENGTH: Script must be 60-70 words. (Target 28-30s). Cut atmospheric filler like 'The wind howled'.\n"
-        "3. **HOOK RULES:**\n"
-        "   - Must be Action/Sensory. 'I heard scratching under my car.'\n"
-        "   - NO POETRY ('Cold metal...').\n"
-        "4. **MANDATORY 3-STEP BRIDGE (The Hesitation):**\n"
+        "1. **LENGTH:** Script MUST be 60-70 words. If it is shorter, I will reject it.\n"
+        "2. **CONTEXT:** Stick to the location (e.g., Car = Asphalt/Tire). No logic errors.\n"
+        "3. **MANDATORY 3-STEP BRIDGE:**\n"
         "   - Action: 'I bent down.'\n"
         "   - Hesitation: 'Stomach turned. Hand shook. I froze.'\n"
         "   - Forced Action: 'I had to look.'\n"
-        "5. **CLIMAX (Cause & Effect):**\n"
-        "   - Don't just say 'Bone snapped'. Say WHY.\n"
-        "   - Good: 'Something pulled my ankle. My face hit the asphalt. Teeth cracked. Tasted copper.'\n"
-        "   - Bad: 'I fell. It was scary.'"
+        "4. **CLIMAX (Cause & Effect):**\n"
+        "   - End with PHYSICAL IMPACT. 'Something pulled my ankle. My face hit the asphalt. Teeth cracked. Tasted copper.'\n"
+        "   - NO 'I woke up' or 'It was a dream'."
     )
     
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "safetySettings": safety_settings
-    }
-
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
-    for model in models:
+    # --- RETRY LOOP (DENEME DÖNGÜSÜ) ---
+    # Eğer Gemini kısa yazarsa, 3 kereye kadar tekrar denet.
+    for attempt in range(3):
+        
+        prompt = base_prompt
+        if attempt > 0:
+            print(f"⚠️ Deneme {attempt+1}: Metin çok kısaydı, daha uzunu isteniyor...")
+            prompt += f"\n\nIMPORTANT: YOUR PREVIOUS ATTEMPT WAS TOO SHORT. WRITE MORE DETAILS. DESCRIBE THE PAIN AND FEAR. MAKE IT AT LEAST 60 WORDS."
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "safetySettings": safety_settings
+        }
+
+        # Model listesini karıştırarak dene (belki başka model daha iyi yazar)
+        current_model = models[attempt % len(models)]
+
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
             r = requests.post(url, json=payload, timeout=20)
             
             if r.status_code == 200:
@@ -100,10 +104,26 @@ def get_content(topic):
                     parts = raw_text.split("|||")
                     
                     if len(parts) >= 6:
+                        script_text = parts[3].strip()
+                        hook_text = parts[1].strip()
+                        
+                        # Hook tekrarı temizliği
+                        if script_text.lower().startswith(hook_text.lower()):
+                            script_text = script_text[len(hook_text):].strip()
+
+                        # --- KELİME SAYISI KONTROLÜ (WORD COUNT CHECK) ---
+                        word_count = len(script_text.split())
+                        print(f"📊 Kelime Sayısı: {word_count}")
+
+                        if word_count < 55:
+                            print(f"❌ Metin çok kısa ({word_count} kelime). Reddedildi.")
+                            time.sleep(1)
+                            continue # Döngü başa döner, tekrar dener
+                        
+                        # Eğer buraya geldiyse uzunluk iyidir
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
-                        # Görsel listesini temizle
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
@@ -119,12 +139,6 @@ def get_content(topic):
                             visual_queries.extend(EMERGENCY_SCENES)
                             visual_queries = list(dict.fromkeys(visual_queries))[:20]
 
-                        hook_text = parts[1].strip()
-                        script_text = parts[3].strip()
-                        
-                        if script_text.lower().startswith(hook_text.lower()):
-                            script_text = script_text[len(hook_text):].strip()
-
                         data = {
                             "title": parts[0].strip(),
                             "hook": hook_text,
@@ -133,10 +147,11 @@ def get_content(topic):
                             "visual_queries": visual_queries,
                             "tags": " ".join(valid_tags)
                         }
-                        print(f"✅ İçerik alındı ({model})")
+                        print(f"✅ İçerik ONAYLANDI ({current_model}) - {word_count} Kelime")
                         return data
         except: continue
 
+    print("❌ 3 denemede de yeterli uzunlukta metin alınamadı.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -354,7 +369,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v58_logic_lock.mp4"
+        out = "horror_v59_word_count.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -373,15 +388,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nMantık Kilidi Modu (V58)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKelime Sayacı Aktif (V59)...")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik oluşturulamadı (3 denemede de kısa kaldı).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🧠 Mekan Tutarlılığı Aktif\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n✅ Onaylı Uzunluk\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
