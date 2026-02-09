@@ -38,15 +38,15 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ (Daha "Body Horror" odaklı) ---
+# --- GARANTİ KORKU SAHNELERİ ---
 EMERGENCY_SCENES = [
     "dark shadow wall", "door handle turning", "broken mirror reflection", 
     "pale hand reaching", "person falling floor", "scary stairs", 
     "feet dragging", "glass breaking", "blood drip", "medical bandage",
-    "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
+    "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V81: KEMİK KIRAN - 10/10 CHECKLIST) ---
+# --- AI İÇERİK (V82: USTURA BIÇAĞI - SIFIR YAĞ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,27 +57,22 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: THE BONE BREAKER (Strict Checklist Compliance)
+    # PROMPT: ZERO FAT / TELEGRAPH STYLE
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Strict Formula) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (GPS Locked) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES (10/10 SCORE CHECKLIST):\n"
-        "1. **HOOK FORMULA (MANDATORY):**\n"
-        "   - MUST be: 'I [Saw/Heard/Felt] [Physical Object] in [Location]'.\n"
-        "   - *Bad:* 'Something lived in the bin.' (Abstract)\n"
-        "   - *Good:* 'I saw a hand in the trash bin.' (Concrete)\n"
-        "2. **ADJECTIVE PURGE (THE STUNTMAN STYLE):**\n"
-        "   - DELETE adjectives like 'gray', 'hot', 'loud', 'scary', 'dark'.\n"
-        "   - Use NOUN + VERB. 'Hand grabbed.' 'Head hit.' 'Bone cracked.'\n"
-        "3. **ACTION CHAIN (3-STEP IMPACT):**\n"
-        "   - Step 1: Contact (Grab/Touch)\n"
-        "   - Step 2: Reaction Failure (Slip/Fall/Hit head)\n"
-        "   - Step 3: Drag/Crush.\n"
-        "4. **FINALE (ANATOMICAL FAILURE):**\n"
-        "   - Do NOT end with 'darkness' or 'fading'.\n"
-        "   - END with specific damage: 'Teeth hit floor.' 'Arm snapped.' 'Jaw crushed.'\n"
-        "5. **LENGTH:** 55-65 WORDS. Use commas to keep flow."
+        "1. **ZERO FAT (THE RAZOR CUT):**\n"
+        "   - **DELETE FILLERS:** Remove 'The', 'A', 'An', 'My', 'His', 'Her', 'Is', 'Was' wherever possible.\n"
+        "   - *Bad:* 'The lift stopped.' -> *Good:* 'Lift stopped.'\n"
+        "   - *Bad:* 'My head hit the floor.' -> *Good:* 'Head hit floor.'\n"
+        "2. **COMPRESSED ACTION:**\n"
+        "   - Combine: 'Hands gripped neck. Body fell.' (Mechanical & Brutal).\n"
+        "3. **SINGLE CLIMAX (ONE BREAK):**\n"
+        "   - Focus on ONE specific damage at the end. Not two.\n"
+        "   - *Good:* 'Pelvis crushed.' OR 'Spine snapped.' (Pick ONE).\n"
+        "4. **LENGTH:** 55-65 WORDS. Dense, heavy words."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -88,7 +83,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: REMOVE ADJECTIVES. MAKE THE HOOK CONCRETE ('I saw...'). END WITH BROKEN BONES."
+            prompt += f"\n\nIMPORTANT: REMOVE 'THE', 'A', 'MY'. MAKE IT TELEGRAPH STYLE. ONE FINAL IMPACT."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -117,15 +112,13 @@ def get_content(topic):
                         word_count = len(script_text.split())
                         print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
 
-                        # Hedef: 55-65 Kelime (İdeal Tempo)
-                        # Fail-safe için 50-75 arasını "geçerli" sayıp cebe atıyoruz, ama 55-65'i arıyoruz.
-                        
-                        # Klişe ve Sıfat Kontrolü
-                        bad_words = ["something lived", "felt like", "seemed", "darkness took", "silent scream", "gray hand", "hot water"]
-                        if any(w in script_text.lower() for w in bad_words):
-                             print("❌ Yasaklı kelime/sıfat tespit edildi. Reddedildi.")
+                        # Dolgu Kelime Kontrolü (The, A, My analizi)
+                        # Eğer metinde çok fazla 'the ' varsa uyar
+                        filler_count = script_text.lower().count("the ") + script_text.lower().count(" a ") + script_text.lower().count("my ")
+                        if filler_count > 5:
+                             print(f"⚠️ Çok fazla dolgu kelime ({filler_count}). Tekrar deneniyor...")
                              continue
-                        
+
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
@@ -154,9 +147,8 @@ def get_content(topic):
 
                         last_valid_data = current_data 
 
-                        # Tam Hedef Kontrolü
-                        if 55 <= word_count <= 70: 
-                            print(f"✅ Mükemmel Uzunluk ({word_count}) ve Temiz Dil. Onaylandı.")
+                        if 55 <= word_count <= 75: # Biraz esnek bırakalım, dolgu yoksa uzun olabilir
+                            print(f"✅ Mükemmel: {word_count} Kelime, Az Dolgu. Onaylandı.")
                             return current_data
                         
                         print(f"⚠️ Uzunluk ({word_count}) ideal değil. Tekrar deneniyor...")
@@ -164,7 +156,7 @@ def get_content(topic):
         except: continue
 
     if last_valid_data:
-        print("⚠️ İdeal sonuç bulunamadı, en son geçerli veri kullanılıyor (Fail-Safe).")
+        print("⚠️ İdeal sonuç bulunamadı, en son geçerli veri kullanılıyor.")
         return last_valid_data
     
     print("❌ İçerik üretilemedi.")
@@ -378,7 +370,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v81_bone_breaker.mp4"
+        out = "horror_v82_razor.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -396,15 +388,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKemik Kıran Modu (V81)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nUstura Bıçağı Modu (V82)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Sistem hatası.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🦴 Kemik Kırma & Sıfat Yasağı\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🪒 'The/My' Yok | Tek Darbe\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
