@@ -10,7 +10,7 @@ from moviepy.editor import (
     VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips, AudioClip
 )
 
-# BS4 Koruması
+# BS4 Koruması (Yüklü değilse çökmesin diye)
 try:
     from bs4 import BeautifulSoup
     BS4_AVAILABLE = True
@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "blurry vision point of view", "dizzy camera movement", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V61: HECE KATİLİ) ---
+# --- AI İÇERİK (V61: HECE KATİLİ & LİSTE ÇOĞALTICI) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,7 +57,7 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: SYLLABLE SLASHER (Short words, choppy sentences)
+    # PROMPT: SYLLABLE SLASHER (Kısa kelimeler, kesik cümleler)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
@@ -85,7 +85,6 @@ def get_content(topic):
     for attempt in range(3):
         prompt = base_prompt
         if attempt > 0:
-            print(f"⚠️ Deneme {attempt+1}: Kriterlere uyulmadı, tekrar deneniyor...")
             prompt += f"\n\nIMPORTANT: PREVIOUS ATTEMPT FAILED. USE SHORTER WORDS. NO COMMAS. MAKE IT CHOPPY."
 
         payload = {
@@ -116,26 +115,21 @@ def get_content(topic):
                         word_count = len(script_text.split())
                         print(f"📊 Kelime Sayısı: {word_count}")
 
-                        # 50'den azsa (çok kısa) veya 70'den çoksa (çok uzun) reddet
                         if word_count < 50 or word_count > 75:
                             print(f"❌ Metin uzunluğu uygunsuz ({word_count} kelime).")
                             time.sleep(1)
                             continue 
                         
-                        # --- YASAKLI KELİME KONTROLÜ (AKADEMİK DİL) ---
-                        academic_words = ["originated", "intensified", "temperature", "immediately", "simultaneously"]
-                        if any(word in script_text.lower() for word in academic_words):
-                             print("❌ Akademik dil tespit edildi. Reddediliyor.")
-                             continue
-
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
-                        # Liste Çoğaltıcı
+                        # --- LİSTE ÇOĞALTICI (V61'İN GÜCÜ) ---
+                        # Gemini az kelime verirse, listeyi biz genişletiyoruz.
                         if len(visual_queries) < 12:
+                            print(f"⚠️ Liste genişletiliyor ({len(visual_queries)} -> 20+)...")
                             expanded_queries = []
                             for q in visual_queries:
                                 expanded_queries.append(f"{q} close up")
@@ -216,13 +210,11 @@ def search_pixabay(query):
 
 # --- AKILLI ARAMA ---
 def smart_scene_search(query):
-    # 1. Tam Cümle
     link = search_mixkit(query)
     if not link: link = search_pexels(query)
     if not link: link = search_pixabay(query)
     if link: return link
 
-    # 2. Son 2 Kelime
     words = query.split()
     if len(words) > 2:
         simple_query = " ".join(words[-2:])
@@ -230,7 +222,6 @@ def smart_scene_search(query):
         if not link: link = search_pixabay(simple_query)
         if link: return link
 
-    # 3. Son Kelime (Nesne)
     if len(words) > 0:
         noun_query = words[-1]
         link = search_pexels(noun_query)
@@ -244,7 +235,6 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # SES
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -269,7 +259,7 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
-    # ARAMA DÖNGÜSÜ
+    # DÖNGÜ (V61)
     for query in visual_queries:
         if current_duration >= total_duration: break
         
@@ -291,7 +281,7 @@ async def generate_resources(content):
             except:
                 if os.path.exists(path): os.remove(path)
 
-    # LOOP YETMEZSE
+    # YEDEK DÖNGÜ
     loop_limit = 0
     while current_duration < total_duration:
         if loop_limit > 5: break
@@ -376,7 +366,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v61_syllable_slasher.mp4"
+        out = "horror_v61_final.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -395,7 +385,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHece Katili Modu (V61)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHece Katili (V61)...\n")
         
         content = get_content(topic)
         
@@ -403,7 +393,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n✂️ Kısa Kelimeler & Kesik Cümleler\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n✂️ Kısa Kelimeler & Çoklu Arama\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -419,7 +409,7 @@ def handle(message):
             with open(path, "rb") as v:
                 bot.send_video(message.chat.id, v, caption=caption_text)
         else:
-            bot.edit_message_text("❌ Hata oluştu.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Video render edilemedi (Kaynak bulunamadı).", message.chat.id, msg.message_id)
             
     except Exception as e:
         bot.reply_to(message, f"Hata: {str(e)}")
