@@ -45,7 +45,7 @@ EMERGENCY_SCENES = [
     "spider web dark", "pale hand reaching", "scary stairs", "moonlight forest"
 ]
 
-# --- AI İÇERİK (V53: İÇGÜDÜSEL KORKU FORMÜLÜ) ---
+# --- AI İÇERİK (V54: KESİK & HAM STİL) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -56,20 +56,23 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: 3 AŞAMALI FORMÜL + SOMUTLUK
+    # PROMPT: STACCATO STYLE (KESİK CÜMLELER, HAM ANLATIM)
     prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (65-75 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (Max 4 words) ||| PUNCHY HOOK (Max 6 words) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-60 words) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES:\n"
-        "1. VISUAL_SCENES_LIST: Provide 15 comma-separated visual nouns. (e.g., 'knife, hand, blood, door').\n"
-        "2. LENGTH: Script must be 65-75 words. (Target 30-35s).\n"
-        "3. HOOK: Concrete Sensory Detail (e.g., 'I hear breathing').\n"
-        "4. **SCRIPT STRUCTURE (MANDATORY):**\n"
-        "   - **Part 1 (Trigger):** Concrete start. 'I heard X', 'I saw X'.\n"
-        "   - **Part 2 (The Bridge/Hesitation):** Describe the PHYSICAL fear. Trembling hands, holding breath, slowly bending down, heart pounding. **Spend time here.**\n"
-        "   - **Part 3 (The Climax):** VIOLENT/PHYSICAL ending. Not just 'it looked at me'. Use: 'It grabbed my ankle', 'Bones crunched', 'Skin tore', 'Dragged me under'.\n"
-        "5. **STYLE:** NO POETRY. NO 'Mysterious atmosphere'. Use BIOLOGICAL words: Skin, breath, sweat, bone, cold, pain."
+        "1. VISUAL_SCENES_LIST: Provide 15 comma-separated visual nouns. (e.g., 'phone, wire, hand, blood, floor').\n"
+        "2. LENGTH: Script must be 50-60 words. (Target 25-28s).\n"
+        "3. HOOK: Immediate Action/Danger. (e.g., 'My phone unlocked itself').\n"
+        "4. **STYLE: STACCATO & RAW (VERY IMPORTANT):**\n"
+        "   - **NO POETRY.** Do not say 'The air grew cold'.\n"
+        "   - **NO SIMILES.** Do not say 'It sounded like...'. Say 'Something snapped'.\n"
+        "   - **SHORT SENTENCES.** Subject + Verb. 'I froze. Heart pounded. It moved.'\n"
+        "5. **STRUCTURE:**\n"
+        "   - **Trigger:** Object moved/changed. Concrete.\n"
+        "   - **Bridge:** Physical freeze. Breath held. Hand shaking. (Fast pace).\n"
+        "   - **Climax:** VIOLENCE. Bone snap. Skin tear. Impact with floor. Blackout."
     )
     
     payload = {
@@ -94,7 +97,7 @@ def get_content(topic):
                         raw_tags = parts[5].strip().replace(",", " ").split()
                         valid_tags = [t for t in raw_tags if t.startswith("#")]
                         
-                        # Görsel listesini temizle ve çoğalt
+                        # Görsel listesini temizle ve çoğalt (V52 Mantığı)
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
@@ -112,6 +115,7 @@ def get_content(topic):
 
                         hook_text = parts[1].strip()
                         script_text = parts[3].strip()
+                        
                         # Hook tekrarı koruması
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
@@ -345,7 +349,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v53_visceral.mp4"
+        out = "horror_v54_raw_cut.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -364,7 +368,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nİçgüdüsel Korku Modu (V53)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHam Korku Modu (V54)...")
         
         content = get_content(topic)
         
@@ -372,7 +376,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik oluşturulamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🩸 Formül: Somut -> Tereddüt -> Acı\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n✂️ Kesik Cümleler & Biyolojik Final\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
