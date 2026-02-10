@@ -38,9 +38,9 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market", "daylight", "sun"
 ]
 
-# --- AI İÇERİK (V104: CONTEXT LOCK - MEKAN KİLİDİ) ---
+# --- AI İÇERİK (V105: NAVİGATÖR MODU - ÇOKLU ARAMA KELİMESİ) ---
 def get_content(topic):
-    # ÇALIŞAN HİDRA MODELLERİ
+    # HİDRA MOTORU (Tüm Modeller Aktif)
     models = [
         "gemini-exp-1206", "gemini-2.5-pro", "gemini-2.5-flash", 
         "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001",
@@ -54,17 +54,19 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # --- PROMPT GÜNCELLEMESİ: MEKAN KİLİDİ ---
+    # --- PROMPT GÜNCELLEMESİ: V105 NAVİGATÖR ---
+    # Artık 8 parça bekliyoruz: MAIN_LOCATION ve SEARCH_VARIANTS eklendi.
     base_prompt = (
         f"You are a VICTIM describing a violent physical trauma in a '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION_KEYWORD ||| #tags\n\n"
-        "CRITICAL RULES (V104 CONTEXT LOCK):\n"
-        "1. **MAIN_LOCATION_KEYWORD:** You must identify the SINGLE main setting (e.g., 'Hospital', 'Forest', 'Car', 'Bedroom'). One word only.\n"
-        "2. **VISUAL SCENES:** All visual queries MUST match this location. No random scenes.\n"
+        "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS (Comma Separated) ||| #tags\n\n"
+        "CRITICAL RULES (V105 NAVIGATOR):\n"
+        "1. **MAIN_LOCATION:** ONE word defining the setting (e.g., 'Hospital').\n"
+        "2. **3_SEARCH_VARIANTS:** 3 alternative visual keywords for stock video search. \n"
+        "   - *Example:* If main is 'Hospital', variants: 'Dark Corridor, Empty ICU, Medical Equipment'.\n"
         "3. **HOOK:** Sensory POV ('I felt/heard...').\n"
         "4. **KINETIC CHAIN:** 3 Impacts -> Final Break.\n"
-        "5. **BIOLOGICAL ENDING:** No abstracts. System failure."
+        "5. **BIOLOGICAL ENDING:** System failure."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -86,61 +88,61 @@ def get_content(topic):
                     raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
                     parts = raw_text.split("|||")
                     
-                    # ARTIK 7 PARÇA BEKLİYORUZ (Mekan Eklendi)
-                    if len(parts) >= 7:
+                    # 8 PARÇA KONTROLÜ (Varyasyonlar dahil)
+                    if len(parts) >= 8:
                         script_text = parts[3].strip()
                         hook_text = parts[1].strip()
                         location_keyword = parts[5].strip().lower() # ANA MEKAN
+                        raw_variants = parts[6].strip().lower().split(",") # VARYASYONLAR
+                        
+                        # Varyasyonları temizle
+                        search_variants = [v.strip() for v in raw_variants if len(v.strip()) > 2]
                         
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        print(f"✅ ZAFER! {current_model} başardı. MEKAN: {location_keyword}")
+                        print(f"✅ ZAFER! {current_model} başardı. MEKAN: {location_keyword} + {search_variants}")
 
-                        # KELİME KONTROLÜ
                         if any(f in script_text.lower() for f in ["darkness took", "faded away", "felt fear"]):
                              continue
                         
-                        raw_tags = parts[6].strip().replace(",", " ").split() # Index kaydı
+                        raw_tags = parts[7].strip().replace(",", " ").split()
                         raw_queries = parts[4].split(",")
                         
-                        # --- MEKAN KİLİDİ (CONTEXT LOCK) ---
-                        # Gemini'nin verdiği sorguları mekana zorla
+                        # --- V105 NAVİGATÖR ARAMA MOTORU ---
                         visual_queries = []
+                        
+                        # 1. Gemini'nin senaryo sahnelerini Ana Mekanla birleştir
                         for q in raw_queries:
                             clean_q = q.strip().lower()
                             if len(clean_q) > 1:
-                                # Eğer sorguda mekan geçmiyorsa, biz ekleyelim
-                                if location_keyword not in clean_q:
-                                    visual_queries.append(f"{clean_q} in {location_keyword} dark")
-                                else:
-                                    visual_queries.append(f"{clean_q} dark horror")
+                                visual_queries.append(f"{clean_q} inside {location_keyword} dark horror")
 
-                        # DİNAMİK YEDEK LİSTESİ (Eskisi çöpe gitti)
-                        # Artık "karanlık gölge" değil, "karanlık HASTANE gölgesi" arayacak
-                        dynamic_backups = [
-                            f"empty {location_keyword} dark horror",
-                            f"{location_keyword} night scary",
-                            f"creepy {location_keyword} pov",
-                            f"dark {location_keyword} atmosphere",
-                            f"{location_keyword} floor blood"
-                        ]
+                        # 2. Varyasyonları Listeye Ekle (Yedek Güç)
+                        for variant in search_variants:
+                            visual_queries.append(f"{variant} dark cinematic")
+                            visual_queries.append(f"scary {variant} pov")
                         
-                        # Listeyi zenginleştir
-                        if len(visual_queries) < 15:
-                            visual_queries.extend(dynamic_backups)
-                            visual_queries.extend(dynamic_backups) # İki kere ekle garanti olsun
-                            random.shuffle(visual_queries)
+                        # 3. Dinamik Yedekleri de ekle (Garanti)
+                        visual_queries.append(f"empty {location_keyword} dark horror")
+                        visual_queries.append(f"{location_keyword} night scary")
+                        
+                        # Karıştır ki hep aynı şeyler gelmesin
+                        random.shuffle(visual_queries)
+
+                        # En az 20 sorgu olsun
+                        visual_queries = list(dict.fromkeys(visual_queries))[:25]
 
                         return {
                             "title": parts[0].strip(),
                             "hook": hook_text,
                             "description": parts[2].strip(),
                             "script": script_text,
-                            "visual_queries": visual_queries[:25],
+                            "visual_queries": visual_queries,
                             "tags": " ".join([t for t in raw_tags if t.startswith("#")]),
-                            "location": location_keyword # Mekanı sakla
+                            "location": location_keyword,
+                            "variants": search_variants
                         }
         except Exception: continue
 
@@ -170,7 +172,6 @@ def search_mixkit(query):
 def search_pexels(query):
     headers = {"Authorization": PEXELS_API_KEY}
     try:
-        # V104: Aramayı daha "Spesifik" yap
         enhanced_query = f"{query}" 
         url = f"https://api.pexels.com/videos/search?query={enhanced_query}&per_page=8&orientation=portrait"
         data = requests.get(url, headers=headers, timeout=5).json()
@@ -201,7 +202,6 @@ def search_pixabay(query):
     return None
 
 def smart_scene_search(query):
-    # Sıralama: Önce Pexels (Kalite), Sonra Pixabay, Sonra Mixkit
     link = search_pexels(query)
     if not link: link = search_pixabay(query)
     if not link: link = search_mixkit(query)
@@ -214,7 +214,6 @@ async def generate_resources(content):
     visual_queries = content["visual_queries"]
     
     try:
-        # Hız -5% (V100 Standardı)
         communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
         await communicate_hook.save("hook.mp3")
         communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -241,7 +240,7 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
-    # MEKAN KİLİDİ AKTİF: Sorgular artık mekana özel
+    # V105: ZENGİNLEŞTİRİLMİŞ ARAMA DÖNGÜSÜ
     for query in visual_queries:
         if current_duration >= total_duration: break
         
@@ -337,7 +336,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v104_context_lock.mp4"
+        out = "horror_v105_navigator.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3000k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -355,7 +354,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nMekan Kilidi (V104)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nNavigatör Modu (V105)...\n")
         
         content = get_content(topic)
         
@@ -363,8 +362,9 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        # Kullanıcıya Mekanı da Gösterelim
-        bot.edit_message_text(f"🎬 **{content['title']}**\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
+        # Kullanıcıya Varyasyonları Göster (Şov Yap)
+        variants_str = ", ".join(content['variants'])
+        bot.edit_message_text(f"🎬 **{content['title']}**\n📍 Konum: {content['location'].upper()}\n🔍 Yedekler: {variants_str}\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
