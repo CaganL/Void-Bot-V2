@@ -35,20 +35,12 @@ BANNED_TERMS = [
     "family", "couple", "romantic", "wedding", "party", "celebration", 
     "wellness", "spa", "massage", "yoga", "relax", "calm", "bright", 
     "sunny", "beach", "holiday", "vacation", "funny", "cute", "baby",
-    "shopping", "sale", "store", "market"
+    "shopping", "sale", "store", "market", "daylight", "sun"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ ---
-EMERGENCY_SCENES = [
-    "dark shadow wall", "door handle turning", "broken mirror reflection", 
-    "pale hand reaching", "person falling floor", "scary stairs", 
-    "feet dragging", "glass breaking", "blood drip", "medical bandage",
-    "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
-]
-
-# --- AI İÇERİK (V103: KIYMA MAKİNESİ MODU - UZUN COMBO, BİYOLOJİK FİNAL) ---
+# --- AI İÇERİK (V104: CONTEXT LOCK - MEKAN KİLİDİ) ---
 def get_content(topic):
-    # ÇALIŞAN HİDRA MODELLERİ (Dokunmadık, mükemmel çalışıyor)
+    # ÇALIŞAN HİDRA MODELLERİ
     models = [
         "gemini-exp-1206", "gemini-2.5-pro", "gemini-2.5-flash", 
         "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001",
@@ -62,20 +54,17 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # --- PROMPT GÜNCELLEMESİ: V103 THE GRINDER ---
+    # --- PROMPT GÜNCELLEMESİ: MEKAN KİLİDİ ---
     base_prompt = (
         f"You are a VICTIM describing a violent physical trauma in a '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 50-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
-        "CRITICAL RULES (THE GRINDER METHOD):\n"
-        "1. **HOOK:** Must be immediate sensory POV. 'I felt/heard [ACTION] at [LOCATION].'\n"
-        "2. **EXTENDED KINETIC CHAIN (THE COMBO):** You must include at least 3 distinct impacts before the end.\n"
-        "   - *Structure:* Grab -> Impact 1 (Knee) -> Impact 2 (Shoulder/Ribs) -> Impact 3 (Head) -> Final Break.\n"
-        "   - *Example:* 'Hand seized ankle. Knee hit tiles. Ribs cracked against tub. Jaw slammed floor. Neck snapped.'\n"
-        "3. **BIOLOGICAL ENDING (NO ABSTRACTS):** \n"
-        "   - BANNED: 'Darkness took me', 'I faded away', 'Everything went black'.\n"
-        "   - REQUIRED: System failure. 'Lungs collapsed.', 'Heart stopped.', 'Synapses fired once, then nothing.', 'Oxygen cut off.'\n"
-        "4. **STYLE:** Robotic Action. No emotions. Subject + Verb + Object."
+        "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION_KEYWORD ||| #tags\n\n"
+        "CRITICAL RULES (V104 CONTEXT LOCK):\n"
+        "1. **MAIN_LOCATION_KEYWORD:** You must identify the SINGLE main setting (e.g., 'Hospital', 'Forest', 'Car', 'Bedroom'). One word only.\n"
+        "2. **VISUAL SCENES:** All visual queries MUST match this location. No random scenes.\n"
+        "3. **HOOK:** Sensory POV ('I felt/heard...').\n"
+        "4. **KINETIC CHAIN:** 3 Impacts -> Final Break.\n"
+        "5. **BIOLOGICAL ENDING:** No abstracts. System failure."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -97,37 +86,61 @@ def get_content(topic):
                     raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
                     parts = raw_text.split("|||")
                     
-                    if len(parts) >= 6:
+                    # ARTIK 7 PARÇA BEKLİYORUZ (Mekan Eklendi)
+                    if len(parts) >= 7:
                         script_text = parts[3].strip()
                         hook_text = parts[1].strip()
+                        location_keyword = parts[5].strip().lower() # ANA MEKAN
+                        
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        print(f"✅ ZAFER! {current_model} başardı: {word_count} Kelime")
+                        print(f"✅ ZAFER! {current_model} başardı. MEKAN: {location_keyword}")
 
-                        # KELİME KONTROLÜ (Soyut Bitişler Yasak)
-                        forbidden = ["darkness took", "faded away", "went black", "felt fear", "scared"]
-                        if any(f in script_text.lower() for f in forbidden):
-                             print("❌ Yasaklı 'Soyut/Duygu' kelimesi var. Pas geçiliyor...")
+                        # KELİME KONTROLÜ
+                        if any(f in script_text.lower() for f in ["darkness took", "faded away", "felt fear"]):
                              continue
                         
-                        raw_tags = parts[5].strip().replace(",", " ").split()
+                        raw_tags = parts[6].strip().replace(",", " ").split() # Index kaydı
                         raw_queries = parts[4].split(",")
-                        visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
-                        if len(visual_queries) < 12:
-                            visual_queries.extend(EMERGENCY_SCENES)
+                        # --- MEKAN KİLİDİ (CONTEXT LOCK) ---
+                        # Gemini'nin verdiği sorguları mekana zorla
+                        visual_queries = []
+                        for q in raw_queries:
+                            clean_q = q.strip().lower()
+                            if len(clean_q) > 1:
+                                # Eğer sorguda mekan geçmiyorsa, biz ekleyelim
+                                if location_keyword not in clean_q:
+                                    visual_queries.append(f"{clean_q} in {location_keyword} dark")
+                                else:
+                                    visual_queries.append(f"{clean_q} dark horror")
+
+                        # DİNAMİK YEDEK LİSTESİ (Eskisi çöpe gitti)
+                        # Artık "karanlık gölge" değil, "karanlık HASTANE gölgesi" arayacak
+                        dynamic_backups = [
+                            f"empty {location_keyword} dark horror",
+                            f"{location_keyword} night scary",
+                            f"creepy {location_keyword} pov",
+                            f"dark {location_keyword} atmosphere",
+                            f"{location_keyword} floor blood"
+                        ]
+                        
+                        # Listeyi zenginleştir
+                        if len(visual_queries) < 15:
+                            visual_queries.extend(dynamic_backups)
+                            visual_queries.extend(dynamic_backups) # İki kere ekle garanti olsun
                             random.shuffle(visual_queries)
-                            visual_queries = list(dict.fromkeys(visual_queries))[:20]
 
                         return {
                             "title": parts[0].strip(),
                             "hook": hook_text,
                             "description": parts[2].strip(),
                             "script": script_text,
-                            "visual_queries": visual_queries,
-                            "tags": " ".join([t for t in raw_tags if t.startswith("#")])
+                            "visual_queries": visual_queries[:25],
+                            "tags": " ".join([t for t in raw_tags if t.startswith("#")]),
+                            "location": location_keyword # Mekanı sakla
                         }
         except Exception: continue
 
@@ -157,8 +170,9 @@ def search_mixkit(query):
 def search_pexels(query):
     headers = {"Authorization": PEXELS_API_KEY}
     try:
-        enhanced_query = f"{query} dark horror"
-        url = f"https://api.pexels.com/videos/search?query={enhanced_query}&per_page=5&orientation=portrait"
+        # V104: Aramayı daha "Spesifik" yap
+        enhanced_query = f"{query}" 
+        url = f"https://api.pexels.com/videos/search?query={enhanced_query}&per_page=8&orientation=portrait"
         data = requests.get(url, headers=headers, timeout=5).json()
         videos = data.get("videos", [])
         if videos:
@@ -174,8 +188,8 @@ def search_pexels(query):
 def search_pixabay(query):
     if not PIXABAY_API_KEY: return None
     try:
-        enhanced_query = f"{query} horror"
-        url = f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}&q={enhanced_query}&video_type=film&per_page=5" 
+        enhanced_query = f"{query}"
+        url = f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}&q={enhanced_query}&video_type=film&per_page=8" 
         data = requests.get(url, timeout=5).json()
         hits = data.get("hits", [])
         if hits:
@@ -187,23 +201,11 @@ def search_pixabay(query):
     return None
 
 def smart_scene_search(query):
-    link = search_mixkit(query)
-    if not link: link = search_pexels(query)
+    # Sıralama: Önce Pexels (Kalite), Sonra Pixabay, Sonra Mixkit
+    link = search_pexels(query)
     if not link: link = search_pixabay(query)
-    if link: return link
-
-    words = query.split()
-    if len(words) > 2:
-        simple_query = " ".join(words[-2:])
-        link = search_pexels(simple_query)
-        if not link: link = search_pixabay(simple_query)
-        if link: return link
-
-    if len(words) > 0:
-        noun_query = words[-1]
-        link = search_pexels(noun_query)
-        if link: return link
-    return None
+    if not link: link = search_mixkit(query)
+    return link
 
 # --- KAYNAK OLUŞTURMA ---
 async def generate_resources(content):
@@ -212,6 +214,7 @@ async def generate_resources(content):
     visual_queries = content["visual_queries"]
     
     try:
+        # Hız -5% (V100 Standardı)
         communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
         await communicate_hook.save("hook.mp3")
         communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -238,8 +241,11 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
+    # MEKAN KİLİDİ AKTİF: Sorgular artık mekana özel
     for query in visual_queries:
         if current_duration >= total_duration: break
+        
+        print(f"🔍 Aranıyor: {query}") 
         video_link = smart_scene_search(query)
         
         if video_link and video_link not in used_links:
@@ -331,7 +337,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v103_grinder.mp4"
+        out = "horror_v104_context_lock.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3000k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -349,7 +355,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKıyma Makinesi Modu (V103)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nMekan Kilidi (V104)...\n")
         
         content = get_content(topic)
         
@@ -357,7 +363,8 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n⚙️ 3x Combo Zinciri + Biyolojik Final\n⏳ Render...", message.chat.id, msg.message_id)
+        # Kullanıcıya Mekanı da Gösterelim
+        bot.edit_message_text(f"🎬 **{content['title']}**\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -372,7 +379,6 @@ def handle(message):
             if len(caption_text) > 1000: caption_text = caption_text[:1000]
             
             bot.edit_message_text("📤 Yükleniyor...", message.chat.id, msg.message_id)
-            
             sent = False
             for attempt in range(3):
                 try:
@@ -381,7 +387,7 @@ def handle(message):
                     sent = True
                     break
                 except Exception as e:
-                    print(f"Yükleme hatası (Deneme {attempt+1}): {e}")
+                    print(f"Yükleme hatası: {e}")
                     time.sleep(5)
             
             if not sent:
