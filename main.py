@@ -46,9 +46,9 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V102: POV KASAP MODU - HİDRA MOTORLU) ---
+# --- AI İÇERİK (V103: KIYMA MAKİNESİ MODU - UZUN COMBO, BİYOLOJİK FİNAL) ---
 def get_content(topic):
-    # ÇALIŞAN TÜM MODELLER (HİDRA LİSTESİ)
+    # ÇALIŞAN HİDRA MODELLERİ (Dokunmadık, mükemmel çalışıyor)
     models = [
         "gemini-exp-1206", "gemini-2.5-pro", "gemini-2.5-flash", 
         "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001",
@@ -62,20 +62,20 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # --- PROMPT GÜNCELLEMESİ: V102 POV BUTCHER ---
+    # --- PROMPT GÜNCELLEMESİ: V103 THE GRINDER ---
     base_prompt = (
-        f"You are a VICTIM describing your own physical trauma in a '{topic}'. "
+        f"You are a VICTIM describing a violent physical trauma in a '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 40-60 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
-        "CRITICAL RULES (POV BUTCHER METHOD):\n"
-        "1. **HOOK FORMULA:** Must be immediate sensory POV. 'I felt/heard [ACTION] at [LOCATION].'\n"
-        "   - *Correct:* 'I felt a hand grab my ankle in the shower.'\n"
-        "   - *Wrong:* 'I saw a body.' (Too passive)\n"
-        "2. **PERSPECTIVE:** FIRST PERSON ONLY ('I', 'My leg', 'My spine'). Never use 'The subject'.\n"
-        "3. **KINETIC CHAIN (THE COMBO):** Include an INTERMEDIATE IMPACT before death.\n"
-        "   - *Structure:* Grab -> **Secondary Hit (Knee/Elbow)** -> Final Break.\n"
-        "   - *Example:* 'Hand seized wrist. I pulled. **Elbow hit the sink.** Neck twisted. C1 snapped.'\n"
-        "4. **STYLE:** Robotic Action. No emotions. No adjectives. Subject + Verb + Object."
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 50-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CRITICAL RULES (THE GRINDER METHOD):\n"
+        "1. **HOOK:** Must be immediate sensory POV. 'I felt/heard [ACTION] at [LOCATION].'\n"
+        "2. **EXTENDED KINETIC CHAIN (THE COMBO):** You must include at least 3 distinct impacts before the end.\n"
+        "   - *Structure:* Grab -> Impact 1 (Knee) -> Impact 2 (Shoulder/Ribs) -> Impact 3 (Head) -> Final Break.\n"
+        "   - *Example:* 'Hand seized ankle. Knee hit tiles. Ribs cracked against tub. Jaw slammed floor. Neck snapped.'\n"
+        "3. **BIOLOGICAL ENDING (NO ABSTRACTS):** \n"
+        "   - BANNED: 'Darkness took me', 'I faded away', 'Everything went black'.\n"
+        "   - REQUIRED: System failure. 'Lungs collapsed.', 'Heart stopped.', 'Synapses fired once, then nothing.', 'Oxygen cut off.'\n"
+        "4. **STYLE:** Robotic Action. No emotions. Subject + Verb + Object."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -106,9 +106,10 @@ def get_content(topic):
                         word_count = len(script_text.split())
                         print(f"✅ ZAFER! {current_model} başardı: {word_count} Kelime")
 
-                        # KELİME KONTROLÜ (Duygu Yasak, POV Zorunlu)
-                        if any(f in script_text.lower() for f in ["scared", "froze", "felt fear", "subject"]):
-                             print("❌ Yasaklı kelime (Duygu veya 'Subject'). Pas geçiliyor...")
+                        # KELİME KONTROLÜ (Soyut Bitişler Yasak)
+                        forbidden = ["darkness took", "faded away", "went black", "felt fear", "scared"]
+                        if any(f in script_text.lower() for f in forbidden):
+                             print("❌ Yasaklı 'Soyut/Duygu' kelimesi var. Pas geçiliyor...")
                              continue
                         
                         raw_tags = parts[5].strip().replace(",", " ").split()
@@ -330,7 +331,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v102_pov_butcher.mp4"
+        out = "horror_v103_grinder.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3000k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -348,7 +349,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nPOV Kasap Modu (V102)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKıyma Makinesi Modu (V103)...\n")
         
         content = get_content(topic)
         
@@ -356,7 +357,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n👁️ POV Bakış Açısı Aktif\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n⚙️ 3x Combo Zinciri + Biyolojik Final\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -370,8 +371,8 @@ def handle(message):
             )
             if len(caption_text) > 1000: caption_text = caption_text[:1000]
             
-            # V100 GÜVENLİ YÜKLEME (Korundu)
             bot.edit_message_text("📤 Yükleniyor...", message.chat.id, msg.message_id)
+            
             sent = False
             for attempt in range(3):
                 try:
