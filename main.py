@@ -46,26 +46,12 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V99: HİDRA MODU - DEVASA LİSTE) ---
+# --- AI İÇERİK (V99 HİDRA MANTIĞI - DEĞİŞTİRMEDİM, ÇALIŞIYOR) ---
 def get_content(topic):
-    # SENİN VERDİĞİN LİSTENİN GÜCÜ BURADA
-    # Öncelik sırasına göre dizdim: En Kaliteli -> En Hızlı -> Yedekler
     models = [
-        # --- ELİT TİM (En Yüksek Kalite) ---
-        "gemini-exp-1206",             # Deneysel ama çok zeki
-        "gemini-2.5-pro",              # Yeni Amiral Gemisi
-        "gemini-2.5-flash",            # Hız ve Zeka
-        
-        # --- HIZ TİMİ (Kota Dostu) ---
-        "gemini-2.0-flash",            # Standart Hız
-        "gemini-2.0-flash-001",        # Stabil Sürüm
-        "gemini-2.0-flash-lite-001",   # En Hafif Sürüm
-        
-        # --- ESKİ TOPRAKLAR (Asla Yarı Yolda Bırakmaz) ---
-        "gemini-1.5-flash",            
-        "gemini-1.5-pro",
-        "gemini-pro-latest",
-        "gemini-flash-latest"
+        "gemini-exp-1206", "gemini-2.5-pro", "gemini-2.5-flash", 
+        "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001",
+        "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro-latest", "gemini-flash-latest"
     ]
     
     safety_settings = [
@@ -75,7 +61,6 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: CERRAH MODU (Değişmedi, çünkü mükemmeldi)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
@@ -89,28 +74,16 @@ def get_content(topic):
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
-    # --- HİDRA DÖNGÜSÜ ---
     for i, current_model in enumerate(models):
         print(f"🔄 [{i+1}/{len(models)}] Deneniyor: {current_model}")
-        
-        payload = {
-            "contents": [{"parts": [{"text": base_prompt}]}],
-            "safetySettings": safety_settings
-        }
+        payload = {"contents": [{"parts": [{"text": base_prompt}]}], "safetySettings": safety_settings}
 
         try:
-            # URL Yapısı
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
             r = requests.post(url, json=payload, timeout=20)
             
-            # --- HATA YÖNETİMİ ---
-            if r.status_code == 429:
-                print(f"⚠️ {current_model} KOTA DOLU. Beklemeden geçiliyor >>")
-                continue # Hız kesme, diğerine geç
-
-            if r.status_code == 404:
-                print(f"⚠️ {current_model} BULUNAMADI. Geçiliyor >>")
-                continue
+            if r.status_code == 429: continue
+            if r.status_code == 404: continue
 
             if r.status_code == 200:
                 response_json = r.json()
@@ -121,21 +94,16 @@ def get_content(topic):
                     if len(parts) >= 6:
                         script_text = parts[3].strip()
                         hook_text = parts[1].strip()
-                        
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
                         print(f"✅ ZAFER! {current_model} başardı: {word_count} Kelime")
 
-                        # KELİME KONTROLÜ
                         if any(phrase in script_text.lower() for phrase in ["heard a noise", "bones cracked", "body hurt"]):
-                             print("❌ Yasaklı ifade var. Kalite için diğer modele geçiliyor...")
                              continue
                         
                         raw_tags = parts[5].strip().replace(",", " ").split()
-                        valid_tags = [t for t in raw_tags if t.startswith("#")]
-                        
                         raw_queries = parts[4].split(",")
                         visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
                         
@@ -150,16 +118,10 @@ def get_content(topic):
                             "description": parts[2].strip(),
                             "script": script_text,
                             "visual_queries": visual_queries,
-                            "tags": " ".join(valid_tags)
+                            "tags": " ".join([t for t in raw_tags if t.startswith("#")])
                         }
-            else:
-                print(f"⚠️ API Hatası ({current_model}): {r.status_code}")
+        except Exception: continue
 
-        except Exception as e:
-            print(f"❌ Bağlantı Hatası ({current_model}): {e}")
-            continue
-
-    print("❌ İNANILMAZ AMA GERÇEK: Listedeki 10 modelin hepsi başarısız oldu.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -240,7 +202,6 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # TTS
     try:
         communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
         await communicate_hook.save("hook.mp3")
@@ -270,15 +231,11 @@ async def generate_resources(content):
     
     for query in visual_queries:
         if current_duration >= total_duration: break
-        
-        print(f"🔍 Aranıyor: {query}")
         video_link = smart_scene_search(query)
         
         if video_link and video_link not in used_links:
             try:
                 path = f"clip_{len(paths)}.mp4"
-                
-                # Retry mekanizması
                 for _ in range(3):
                     try:
                         r = requests.get(video_link, timeout=15)
@@ -365,8 +322,9 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v99_hydra.mp4"
-        final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
+        out = "horror_v100_final.mp4"
+        # Bitrate'i biraz dengeledim ki dosya boyutu aşırı şişmesin (upload hatasını önlemek için)
+        final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3000k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
         for c in clips: c.close()
@@ -383,15 +341,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHidra Modu (V99)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSon Kurye Modu (V100)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Tüm modeller denendi ama sonuç alınamadı. (İnternet bağlantını kontrol et)", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Tüm modeller denendi ama sonuç alınamadı.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🐉 10 Farklı Model Denendi ve Bulundu\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🐉 Model Bulundu: OK\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -405,11 +363,24 @@ def handle(message):
             )
             if len(caption_text) > 1000: caption_text = caption_text[:1000]
             
-            try:
-                with open(path, "rb") as v:
-                    bot.send_video(message.chat.id, v, caption=caption_text, timeout=120)
-            except Exception as e:
-                bot.reply_to(message, f"Gönderim hatası: {e}")
+            # --- V100 GÜNCELLEMESİ: GÜÇLENDİRİLMİŞ YÜKLEME ---
+            bot.edit_message_text("📤 Video sunucuya yüklüyor (Lütfen bekle, büyük dosya)...", message.chat.id, msg.message_id)
+            
+            sent = False
+            for attempt in range(3): # 3 Kere Dene
+                try:
+                    with open(path, "rb") as v:
+                        # Timeout'u 600 saniye (10 dakika) yaptım!
+                        bot.send_video(message.chat.id, v, caption=caption_text, timeout=600)
+                    sent = True
+                    break
+                except Exception as e:
+                    print(f"Yükleme hatası (Deneme {attempt+1}): {e}")
+                    time.sleep(5)
+            
+            if not sent:
+                bot.reply_to(message, "❌ Video oluşturuldu ama Telegram'a yüklenirken bağlantı koptu (Dosya çok büyük olabilir).")
+                
         else:
             bot.edit_message_text("❌ Video render edilemedi.", message.chat.id, msg.message_id)
             
