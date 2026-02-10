@@ -38,17 +38,9 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market", "daylight", "sun", "blue sky"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ ---
-EMERGENCY_SCENES = [
-    "dark shadow wall", "door handle turning", "broken mirror reflection", 
-    "pale hand reaching", "person falling floor", "scary stairs", 
-    "feet dragging", "glass breaking", "blood drip", "medical bandage",
-    "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
-]
-
-# --- AI İÇERİK (V106: LOOP KILLER - ARAMA STRATEJİSİ GÜÇLENDİRİLDİ) ---
+# --- AI İÇERİK (V108: ALTIN ORAN - 25-32 SANİYE HEDEFİ) ---
 def get_content(topic):
-    # HİDRA MODELLERİ (Aynı kalıyor, çünkü çalışıyor)
+    # HİDRA LİSTESİ (Aynı)
     models = [
         "gemini-exp-1206", "gemini-2.5-pro", "gemini-2.5-flash", 
         "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001",
@@ -62,16 +54,18 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
+    # --- PROMPT GÜNCELLEMESİ: V108 ---
+    # Hedef: 45-55 Kelime. Bu aralık -5% hızla tam 25-32s yapar.
     base_prompt = (
         f"You are a VICTIM describing a violent physical trauma in a '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (50-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS (Comma Separated) ||| #tags\n\n"
-        "CRITICAL RULES (V106 LOOP KILLER):\n"
-        "1. **MAIN_LOCATION:** ONE word setting (e.g., 'Morgue').\n"
-        "2. **3_SEARCH_VARIANTS:** 3 distinctive keywords. If main is 'Morgue', use: 'Dead Body, Cold Steel, Freezer Handle'.\n"
-        "3. **HOOK:** Sensory POV ('I felt/heard...').\n"
-        "4. **KINETIC CHAIN:** 3 Impacts -> Final Break.\n"
-        "5. **BIOLOGICAL ENDING:** System failure."
+        "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 45-55 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS (Comma Separated) ||| #tags\n\n"
+        "CRITICAL RULES (V108 GOLDILOCKS ZONE):\n"
+        "1. **LENGTH:** STRICTLY 45-55 WORDS. Aim for exactly 28 seconds of speech.\n"
+        "2. **HOOK:** Immediate POV action. 'I felt/heard...'.\n"
+        "3. **KINETIC CHAIN:** Impact 1 -> Impact 2 -> Final Break.\n"
+        "4. **STYLE:** Robotic Action. Subject + Verb + Object. No 'Suddenly', No 'Then'.\n"
+        "5. **MAIN_LOCATION:** ONE word setting."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -104,7 +98,17 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        print(f"✅ ZAFER! {current_model} başardı. MEKAN: {location_keyword}")
+                        print(f"✅ ZAFER! {current_model} başardı. Kelime Sayısı: {word_count} (Hedef: 45-55)")
+
+                        # SÜRE KİLİDİ: 60 kelimeyi geçerse reddet (32 saniyeyi aşar)
+                        if word_count > 60:
+                            print("⚠️ Metin çok uzun (>60 kelime). 32s sınırını aşar. Reddediliyor...")
+                            continue
+                        
+                        # 40 kelimeden azsa reddet (25 saniyeden kısa kalır)
+                        if word_count < 40:
+                             print("⚠️ Metin çok kısa (<40 kelime). 25s altında kalır. Reddediliyor...")
+                             continue
 
                         if any(f in script_text.lower() for f in ["darkness took", "faded away", "felt fear"]):
                              continue
@@ -112,31 +116,24 @@ def get_content(topic):
                         raw_tags = parts[7].strip().replace(",", " ").split()
                         raw_queries = parts[4].split(",")
                         
-                        # --- V106: SORGU ÇOĞALTMA (QUERY EXPLOSION) ---
-                        # Tekrarı önlemek için elimizdeki kelimelerden binlerce kombinasyon türetiyoruz.
+                        # --- NAVIGATOR + LOOP KILLER SEARCH ---
                         visual_queries = []
-                        
-                        # 1. Ana sahneler
                         for q in raw_queries:
                             clean_q = q.strip().lower()
                             if len(clean_q) > 1:
                                 visual_queries.append(f"{clean_q} inside {location_keyword} dark horror")
 
-                        # 2. Varyasyon Kombinasyonları
-                        modifiers = ["close up", "low angle", "blurry", "cinematic", "scary lighting"]
+                        modifiers = ["close up", "low angle", "blurry", "cinematic"]
                         for variant in search_variants:
                             for mod in modifiers:
                                 visual_queries.append(f"{variant} {mod} horror")
                         
-                        # 3. Mekan Detayları (Duvar, Zemin, Tavan, Işık) - Tekrarı önleyen gizli silah
-                        details = ["wall", "floor", "ceiling", "window", "door", "light", "shadow"]
+                        details = ["wall", "floor", "ceiling", "window", "door", "light"]
                         for detail in details:
                             visual_queries.append(f"{location_keyword} {detail} texture horror")
-                            visual_queries.append(f"scary {location_keyword} {detail}")
 
                         random.shuffle(visual_queries)
-                        # Listeyi çok uzun tutuyoruz ki asla bitmesin
-                        visual_queries = list(dict.fromkeys(visual_queries))[:40] 
+                        visual_queries = list(dict.fromkeys(visual_queries))[:35] 
 
                         return {
                             "title": parts[0].strip(),
@@ -211,13 +208,14 @@ def smart_scene_search(query):
     if not link: link = search_mixkit(query)
     return link
 
-# --- KAYNAK OLUŞTURMA (V106: STOK FAZLASI STRATEJİSİ) ---
+# --- KAYNAK OLUŞTURMA (V108: -5% HIZ + 45-55 KELİME) ---
 async def generate_resources(content):
     hook = content["hook"]
     script = content["script"]
     visual_queries = content["visual_queries"]
     
     try:
+        # HIZ GERİ GELDİ: -5% (Atmosfer için şart)
         communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
         await communicate_hook.save("hook.mp3")
         communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -239,25 +237,22 @@ async def generate_resources(content):
 
     audio = AudioFileClip("voice.mp3")
     total_duration = audio.duration
-    target_duration = total_duration * 1.5 # %50 Fazla video indir (Stok Fazlası)
+    target_duration = total_duration * 1.5 
     
     paths = []
     used_links = set()
     current_duration = 0.0
     
-    print(f"🎯 Hedef Süre: {total_duration}s (İndirilecek: {target_duration}s)")
+    print(f"🎯 Hedef Süre (V108): {total_duration:.2f}s (Tam 25-32 arası bekleniyor)")
 
-    # ANA ARAMA DÖNGÜSÜ
     for query in visual_queries:
-        if current_duration >= target_duration: break # Hedefe ulaşınca dur
-        
-        print(f"🔍 Aranıyor: {query}") 
+        if current_duration >= target_duration: break 
         video_link = smart_scene_search(query)
         
         if video_link and video_link not in used_links:
             try:
                 path = f"clip_{len(paths)}.mp4"
-                for _ in range(2): # Hızlı retry
+                for _ in range(2): 
                     try:
                         r = requests.get(video_link, timeout=10)
                         if r.status_code == 200:
@@ -270,7 +265,7 @@ async def generate_resources(content):
                     if c.duration > 1.0:
                         paths.append(path)
                         used_links.add(video_link)
-                        current_duration += 2.5 # Ortalama klip süresi
+                        current_duration += 2.5 
                     c.close()
             except:
                 if os.path.exists(path): os.remove(path)
@@ -288,9 +283,7 @@ def cold_horror_grade(image):
     cold_img = cold_img * 0.6 
     return np.clip(cold_img, 0, 255).astype(np.uint8)
 
-# FLASHBACK EFEKTİ (TEKRAR EDEN VİDEOLAR İÇİN)
 def flashback_effect(clip):
-    # Siyah Beyaz + Yavaş Çekim
     return clip.fx(vfx.blackwhite).fx(vfx.speedx, 0.6)
 
 def apply_processing(clip, duration):
@@ -308,8 +301,6 @@ def apply_processing(clip, duration):
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
 
-    # V106: Aynalama efektini kaldırdık, çünkü tekrar hissi yaratıyor.
-    # Sadece renk ve zoom var.
     clip = clip.resize(lambda t: 1 + 0.02 * t).set_position(('center', 'center'))
     clip = clip.fl_image(cold_horror_grade)
     return clip
@@ -324,27 +315,21 @@ def build_video(content):
         clips = []
         current_total_duration = 0.0
         
-        # 1. TUR: BENZERSİZ VİDEOLAR
         for p in paths:
             try:
                 c = VideoFileClip(p).without_audio()
-                dur = random.uniform(2.5, 4.0) # Biraz daha uzun klipler
+                dur = random.uniform(2.5, 4.0)
                 processed = apply_processing(c, dur)
                 clips.append(processed)
                 current_total_duration += processed.duration
             except: continue
 
-        # 2. TUR: MECBURİ TEKRAR (LOOP KILLER DEVREDE)
-        # Eğer hala süre yetmediyse, videoları tekrar kullan ama EFEKTLİ
-        original_pool = list(clips) # Orijinal havuzun kopyasını al
+        original_pool = list(clips) 
         
         while current_total_duration < audio.duration:
-            print("⚠️ Video yetmedi, Flashback Efekti ile tekrar kullanılıyor...")
+            if not original_pool: break
             random_clip = random.choice(original_pool).copy()
-            
-            # TEKRAR EDEN VİDEOYU DEĞİŞTİR
             random_clip = flashback_effect(random_clip)
-            
             clips.append(random_clip)
             current_total_duration += random_clip.duration
 
@@ -352,7 +337,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v106_loop_killer.mp4"
+        out = "horror_v108_goldilocks.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3000k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -370,15 +355,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nLoop Killer Modu (V106)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAltın Oran Modu (V108)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi (Süre kriterine uymadı).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🚫 Tekrar Yok (Stok Fazlası Aktif)\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n⏱️ Hedef: 25-32 Saniye\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
