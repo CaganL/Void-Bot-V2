@@ -46,7 +46,7 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V81: KEMİK KIRAN - 10/10 CHECKLIST) ---
+# --- AI İÇERİK (V90: CERRAH MODU - SPESİFİK ANATOMİ) ---
 def get_content(topic):
     models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
     
@@ -57,27 +57,22 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: THE BONE BREAKER (Strict Checklist Compliance)
+    # PROMPT: THE SURGEON (Specific Anatomy & Sensory Details)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Strict Formula) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Specific Sensory) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES (10/10 SCORE CHECKLIST):\n"
-        "1. **HOOK FORMULA (MANDATORY):**\n"
-        "   - MUST be: 'I [Saw/Heard/Felt] [Physical Object] in [Location]'.\n"
-        "   - *Bad:* 'Something lived in the bin.' (Abstract)\n"
-        "   - *Good:* 'I saw a hand in the trash bin.' (Concrete)\n"
-        "2. **ADJECTIVE PURGE (THE STUNTMAN STYLE):**\n"
-        "   - DELETE adjectives like 'gray', 'hot', 'loud', 'scary', 'dark'.\n"
-        "   - Use NOUN + VERB. 'Hand grabbed.' 'Head hit.' 'Bone cracked.'\n"
-        "3. **ACTION CHAIN (3-STEP IMPACT):**\n"
-        "   - Step 1: Contact (Grab/Touch)\n"
-        "   - Step 2: Reaction Failure (Slip/Fall/Hit head)\n"
-        "   - Step 3: Drag/Crush.\n"
-        "4. **FINALE (ANATOMICAL FAILURE):**\n"
-        "   - Do NOT end with 'darkness' or 'fading'.\n"
-        "   - END with specific damage: 'Teeth hit floor.' 'Arm snapped.' 'Jaw crushed.'\n"
-        "5. **LENGTH:** 55-65 WORDS. Use commas to keep flow."
+        "1. **HOOK PRECISION (NO 'NOISE'):**\n"
+        "   - BANNED: 'I heard a noise', 'I saw something'.\n"
+        "   - REQUIRED: Specific sound/action. 'I heard scratching', 'I saw breathing', 'I heard tapping'.\n"
+        "2. **ANATOMICAL SPECIFICITY (THE SURGEON):**\n"
+        "   - BANNED: 'Bones cracked', 'Body hurt'. (Too vague).\n"
+        "   - REQUIRED: Name the bone/part. 'Jaw unhinged', 'Femur snapped', 'Ribs punctured lung', 'Teeth hit concrete'.\n"
+        "3. **SINGLE FATAL CLIMAX:**\n"
+        "   - Do not list multiple injuries at the end. Focus on ONE massive break.\n"
+        "   - *Example:* 'My neck snapped sideways.' (Stop there. Let it linger).\n"
+        "4. **LENGTH:** 55-65 WORDS. Use commas to keep flow."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -88,7 +83,7 @@ def get_content(topic):
     for attempt in range(5): 
         prompt = base_prompt
         if attempt > 0:
-            prompt += f"\n\nIMPORTANT: REMOVE ADJECTIVES. MAKE THE HOOK CONCRETE ('I saw...'). END WITH BROKEN BONES."
+            prompt += f"\n\nIMPORTANT: DON'T USE 'NOISE' OR 'BONES'. BE SPECIFIC (SCRATCHING, JAW, SPINE)."
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -117,10 +112,11 @@ def get_content(topic):
                         word_count = len(script_text.split())
                         print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
 
-                        # Klişe ve Sıfat Kontrolü
-                        bad_words = ["something lived", "felt like", "seemed", "darkness took", "silent scream", "gray hand", "hot water"]
-                        if any(w in script_text.lower() for w in bad_words):
-                             print("❌ Yasaklı kelime/sıfat tespit edildi. Reddedildi.")
+                        # GENEL KELİME KONTROLÜ (V90 Kuralı)
+                        # "noise" veya "bones cracked" gibi genel ifadeleri yakala ve reddet.
+                        forbidden_phrases = ["heard a noise", "bones cracked", "body hurt", "something moved"]
+                        if any(phrase in script_text.lower() for phrase in forbidden_phrases):
+                             print("❌ Yasaklı 'Genel' ifade tespit edildi. Daha spesifik olması için reddedildi.")
                              continue
                         
                         raw_tags = parts[5].strip().replace(",", " ").split()
@@ -154,7 +150,7 @@ def get_content(topic):
 
                         # Tam Hedef Kontrolü (55-70 arası ideal)
                         if 55 <= word_count <= 70: 
-                            print(f"✅ Mükemmel Uzunluk ({word_count}) ve Temiz Dil. Onaylandı.")
+                            print(f"✅ Mükemmel Uzunluk ({word_count}) ve Spesifik Dil. Onaylandı.")
                             return current_data
                         
                         print(f"⚠️ Uzunluk ({word_count}) ideal değil. Tekrar deneniyor...")
@@ -246,7 +242,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # HIZ: -5% (V81'in Orijinal Ayarı - Korku için en iyisi)
+    # HIZ: -5% (Atmosfer için ideal)
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -376,7 +372,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v81_bone_breaker.mp4"
+        out = "horror_v90_surgeon.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -394,7 +390,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKemik Kıran Modu (V81 Geri Döndü)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nCerrah Modu (V90)...\n")
         
         content = get_content(topic)
         
@@ -402,7 +398,7 @@ def handle(message):
             bot.edit_message_text("❌ Sistem hatası (Hiç içerik alınamadı).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🦴 Kemik Kırma & Sıfat Yasağı\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🩺 Spesifik Anatomi & Net Hook\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
