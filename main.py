@@ -29,8 +29,9 @@ W, H = 720, 1280
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- YASAKLI KELİMELER ---
-BANNED_TERMS = [
+# --- YASAKLI KELİMELER (Sadece Video Araması İçin) ---
+# Not: Metin kontrolü kaldırıldı, sadece stok video ararken filtreliyoruz.
+BANNED_VIDEO_TERMS = [
     "happy", "smile", "laugh", "business", "corporate", "office", "working", 
     "family", "couple", "romantic", "wedding", "party", "celebration", 
     "wellness", "spa", "massage", "yoga", "relax", "calm", "bright", 
@@ -38,7 +39,7 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market"
 ]
 
-# --- GARANTİ KORKU SAHNELERİ (Body Horror Odaklı) ---
+# --- GARANTİ KORKU SAHNELERİ ---
 EMERGENCY_SCENES = [
     "dark shadow wall", "door handle turning", "broken mirror reflection", 
     "pale hand reaching", "person falling floor", "scary stairs", 
@@ -46,9 +47,10 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V90: CERRAH MODU - SPESİFİK ANATOMİ) ---
+# --- AI İÇERİK (V91: ÖLÜMSÜZ MOD - FİLTRE YOK) ---
 def get_content(topic):
-    models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
+    # Model listesini genişletelim ki kota sorunu olmasın
+    models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
     
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -57,36 +59,24 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: THE SURGEON (Specific Anatomy & Sensory Details)
+    # PROMPT: V81 (Kemik Kıran) Promptunu Koruyoruz ama PYTHON tarafında reddetmeyeceğiz.
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
         "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Specific Sensory) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
-        "CRITICAL RULES (10/10 SCORE CHECKLIST):\n"
-        "1. **HOOK PRECISION (NO 'NOISE'):**\n"
-        "   - BANNED: 'I heard a noise', 'I saw something'.\n"
-        "   - REQUIRED: Specific sound/action. 'I heard scratching', 'I saw breathing', 'I heard tapping'.\n"
-        "2. **ANATOMICAL SPECIFICITY (THE SURGEON):**\n"
-        "   - BANNED: 'Bones cracked', 'Body hurt'. (Too vague).\n"
-        "   - REQUIRED: Name the bone/part. 'Jaw unhinged', 'Femur snapped', 'Ribs punctured lung', 'Teeth hit concrete'.\n"
-        "3. **SINGLE FATAL CLIMAX:**\n"
-        "   - Do not list multiple injuries at the end. Focus on ONE massive break.\n"
-        "   - *Example:* 'My neck snapped sideways.' (Stop there. Let it linger).\n"
-        "4. **LENGTH:** 55-65 WORDS. Use commas to keep flow."
+        "CRITICAL RULES:\n"
+        "1. **ANATOMICAL SPECIFICITY:** Use specific bones/organs (Femur, Jaw, Spine).\n"
+        "2. **NO ABSTRACT NOUNS:** Don't say 'noise' or 'fear'. Say 'Scratching' or 'Shaking'.\n"
+        "3. **SINGLE CLIMAX:** End with one major physical break.\n"
+        "4. **LENGTH:** Aim for 55-65 words."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
-    last_valid_data = None 
-
     # --- DENETİM DÖNGÜSÜ ---
     for attempt in range(5): 
-        prompt = base_prompt
-        if attempt > 0:
-            prompt += f"\n\nIMPORTANT: DON'T USE 'NOISE' OR 'BONES'. BE SPECIFIC (SCRATCHING, JAW, SPINE)."
-
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": [{"parts": [{"text": base_prompt}]}],
             "safetySettings": safety_settings
         }
 
@@ -98,75 +88,63 @@ def get_content(topic):
             
             if r.status_code == 200:
                 response_json = r.json()
-                if 'candidates' in response_json and response_json['candidates']:
-                    raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
-                    parts = raw_text.split("|||")
+                # API yanıtını kontrol et
+                if 'candidates' not in response_json or not response_json['candidates']:
+                    print(f"⚠️ {current_model} boş yanıt döndü (Güvenlik filtresi olabilir).")
+                    continue
+
+                raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
+                
+                # Formatı kontrol et (||| var mı?)
+                parts = raw_text.split("|||")
+                
+                if len(parts) >= 6:
+                    script_text = parts[3].strip()
+                    hook_text = parts[1].strip()
                     
-                    if len(parts) >= 6:
-                        script_text = parts[3].strip()
-                        hook_text = parts[1].strip()
-                        
-                        if script_text.lower().startswith(hook_text.lower()):
-                            script_text = script_text[len(hook_text):].strip()
+                    # Hook tekrarını temizle
+                    if script_text.lower().startswith(hook_text.lower()):
+                        script_text = script_text[len(hook_text):].strip()
 
-                        word_count = len(script_text.split())
-                        print(f"📊 Deneme {attempt+1}: {word_count} Kelime")
+                    # Görsel sorguları hazırla
+                    raw_queries = parts[4].split(",")
+                    visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
+                    
+                    # Yedek sahnelerle doldur
+                    if len(visual_queries) < 12:
+                        visual_queries.extend(EMERGENCY_SCENES)
+                        random.shuffle(visual_queries)
+                        visual_queries = list(dict.fromkeys(visual_queries))[:20]
 
-                        # GENEL KELİME KONTROLÜ (V90 Kuralı)
-                        # "noise" veya "bones cracked" gibi genel ifadeleri yakala ve reddet.
-                        forbidden_phrases = ["heard a noise", "bones cracked", "body hurt", "something moved"]
-                        if any(phrase in script_text.lower() for phrase in forbidden_phrases):
-                             print("❌ Yasaklı 'Genel' ifade tespit edildi. Daha spesifik olması için reddedildi.")
-                             continue
-                        
-                        raw_tags = parts[5].strip().replace(",", " ").split()
-                        valid_tags = [t for t in raw_tags if t.startswith("#")]
-                        
-                        raw_queries = parts[4].split(",")
-                        visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
-                        
-                        if len(visual_queries) < 12:
-                            expanded_queries = []
-                            for q in visual_queries:
-                                expanded_queries.append(f"{q} close up")
-                                expanded_queries.append(f"{q} scary")
-                                expanded_queries.append(f"{q} dark cinematic")
-                            visual_queries.extend(expanded_queries)
-                            random.shuffle(EMERGENCY_SCENES)
-                            visual_queries.extend(EMERGENCY_SCENES)
-                            visual_queries = list(dict.fromkeys(visual_queries))[:20]
+                    valid_tags = [t for t in parts[5].strip().replace(",", " ").split() if t.startswith("#")]
 
-                        current_data = {
-                            "title": parts[0].strip(),
-                            "hook": hook_text,
-                            "description": parts[2].strip(),
-                            "script": script_text,
-                            "visual_queries": visual_queries,
-                            "tags": " ".join(valid_tags)
-                        }
+                    data = {
+                        "title": parts[0].strip(),
+                        "hook": hook_text,
+                        "description": parts[2].strip(),
+                        "script": script_text,
+                        "visual_queries": visual_queries,
+                        "tags": " ".join(valid_tags)
+                    }
+                    
+                    print(f"✅ İÇERİK ONAYLANDI ({current_model}). Kelime Sayısı: {len(script_text.split())}")
+                    return data # HİÇBİR KONTROL YOK, DİREKT DÖNDÜR
+                else:
+                    print(f"⚠️ Format hatası (||| eksik). Tekrar deneniyor...")
 
-                        # FAIL-SAFE: Her geçerli veriyi sakla
-                        last_valid_data = current_data 
+            else:
+                print(f"⚠️ API HTTP Hatası: {r.status_code}")
 
-                        # Tam Hedef Kontrolü (55-70 arası ideal)
-                        if 55 <= word_count <= 70: 
-                            print(f"✅ Mükemmel Uzunluk ({word_count}) ve Spesifik Dil. Onaylandı.")
-                            return current_data
-                        
-                        print(f"⚠️ Uzunluk ({word_count}) ideal değil. Tekrar deneniyor...")
+        except Exception as e:
+            print(f"❌ Kritik API Hatası: {e}")
+            continue
 
-        except: continue
-
-    if last_valid_data:
-        print("⚠️ İdeal sonuç bulunamadı, en son geçerli veri kullanılıyor (Fail-Safe).")
-        return last_valid_data
-    
-    print("❌ İçerik üretilemedi.")
+    print("❌ 5 denemede de API düzgün yanıt vermedi.")
     return None
 
 def is_safe_video(video_url, tags=[]):
     text_to_check = (video_url + " " + " ".join(tags)).lower()
-    for b in BANNED_TERMS:
+    for b in BANNED_VIDEO_TERMS:
         if b in text_to_check: return False
     return True
 
@@ -242,7 +220,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # HIZ: -5% (Atmosfer için ideal)
+    # HIZ: -5% (V81 Ayarı)
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -372,7 +350,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v90_surgeon.mp4"
+        out = "horror_v91_immortal.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -390,15 +368,16 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nCerrah Modu (V90)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nÖlümsüz Mod (V91)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Sistem hatası (Hiç içerik alınamadı).", message.chat.id, msg.message_id)
+            # Hata durumunda bile logları gösterelim
+            bot.edit_message_text("❌ Gemini yanıt vermiyor (API Key veya Kota kontrolü yap).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🩺 Spesifik Anatomi & Net Hook\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🛡️ Tüm Filtreler Kapalı\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -418,7 +397,7 @@ def handle(message):
             except Exception as e:
                 bot.reply_to(message, f"Gönderim hatası: {e}")
         else:
-            bot.edit_message_text("❌ Video render edilemedi.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Video render edilemedi (Montaj hatası).", message.chat.id, msg.message_id)
             
     except Exception as e:
         bot.reply_to(message, f"Hata: {str(e)}")
