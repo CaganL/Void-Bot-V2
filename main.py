@@ -46,11 +46,13 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V93: SNIPER MODU - TEK HEDEF, UZUN BEKLEME) ---
+# --- AI İÇERİK (V95: ESKİ DOST - STABİL MODELLER) ---
 def get_content(topic):
-    # LİSTEYİ TEKE DÜŞÜRDÜK. Sadece çalışanı kullanacağız.
-    # Diğerlerini denemek kotayı şişiriyor.
-    models = ["gemini-2.0-flash"] 
+    # MACERA YOK. Sadece en kararlı, en yüksek kotalı modeller.
+    models = [
+        "gemini-1.5-flash",  # KOTA KRALI (Günde 1500+ istek hakkı var)
+        "gemini-1.5-pro",    # KALİTE KRALI (Yedek)
+    ]
     
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -59,39 +61,37 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
+    # PROMPT: CERRAH MODU (V90 - En Sevdiğin Prompt)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
         "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Specific Sensory) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
         "CRITICAL RULES (10/10 SCORE CHECKLIST):\n"
-        "1. **HOOK PRECISION:** BANNED: 'Noise'. REQUIRED: 'Scratching', 'Breathing'.\n"
-        "2. **ANATOMICAL SPECIFICITY:** BANNED: 'Bones cracked'. REQUIRED: 'Jaw unhinged', 'Femur snapped'.\n"
+        "1. **HOOK PRECISION:** BANNED: 'Noise', 'Something'. REQUIRED: 'Scratching', 'Breathing', 'Tapping'.\n"
+        "2. **ANATOMICAL SPECIFICITY:** BANNED: 'Bones cracked'. REQUIRED: 'Jaw unhinged', 'Femur snapped', 'Ribs punctured'.\n"
         "3. **SINGLE FATAL CLIMAX:** End with ONE massive physical break.\n"
         "4. **LENGTH:** 55-65 WORDS. Use commas to keep flow."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
-    # --- DENETİM DÖNGÜSÜ ---
-    # Aynı modeli 3 kere ısrarla deneyeceğiz (Bekleyerek)
-    for attempt in range(3): 
-        current_model = models[0] # Hep aynı modeli zorla
-        
+    last_valid_data = None 
+
+    for attempt in range(len(models)): 
+        current_model = models[attempt]
         payload = {
             "contents": [{"parts": [{"text": base_prompt}]}],
             "safetySettings": safety_settings
         }
 
         try:
+            # API URL'si kararlı sürüme (v1beta) gidiyor
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
             r = requests.post(url, json=payload, timeout=30)
             
-            # --- KOTA HATASI (429) ---
             if r.status_code == 429:
-                wait_time = 20 # 20 SANİYE BEKLE (Soğuması için şart)
-                print(f"⚠️ Kota Doldu (429). {wait_time} saniye bekleniyor... (Deneme {attempt+1}/3)")
-                time.sleep(wait_time) 
-                continue 
+                print(f"⚠️ {current_model} Kotası Anlık Doldu. Diğerine geçiliyor...")
+                continue # Beklemeden diğerine geç (1.5 Flash dolarsa 1.5 Pro kurtarır)
 
             if r.status_code == 200:
                 response_json = r.json()
@@ -107,11 +107,11 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        print(f"📊 Başarılı: {word_count} Kelime")
+                        print(f"📊 {current_model} Başarılı: {word_count} Kelime")
 
                         # KELİME KONTROLÜ
                         if any(phrase in script_text.lower() for phrase in ["heard a noise", "bones cracked", "body hurt"]):
-                             print("❌ Yasaklı ifade. Tekrar deneniyor...")
+                             print("❌ Yasaklı ifade. Reddedildi.")
                              continue
                         
                         raw_tags = parts[5].strip().replace(",", " ").split()
@@ -134,19 +134,24 @@ def get_content(topic):
                             "tags": " ".join(valid_tags)
                         }
 
-                        # Eğer 40 kelime üzerindeyse kabul et (Çok seçici olma artık)
-                        if word_count >= 40:
+                        last_valid_data = current_data 
+                        
+                        # 1.5 Modelleri bazen kısa yazabilir, o yüzden aralığı geniş tuttum
+                        if 45 <= word_count <= 75: 
+                            print(f"✅ Mükemmel Sonuç ({current_model}).")
                             return current_data
             else:
-                print(f"⚠️ API Hatası: {r.status_code}")
-                time.sleep(5)
+                print(f"⚠️ API Hatası ({current_model}): {r.status_code}")
 
         except Exception as e:
             print(f"❌ Bağlantı Hatası: {e}")
-            time.sleep(5)
             continue
+
+    if last_valid_data:
+        print("⚠️ En iyi yedek veri kullanılıyor.")
+        return last_valid_data
     
-    print("❌ Tüm denemeler başarısız.")
+    print("❌ İçerik üretilemedi (Tüm modeller başarısız).")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -227,26 +232,23 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # TTS
-    try:
-        communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
-        await communicate_hook.save("hook.mp3")
-        communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
-        await communicate_script.save("script.mp3")
-        
-        hook_audio = AudioFileClip("hook.mp3")
-        script_audio = AudioFileClip("script.mp3")
-        silence = AudioClip(lambda t: [0, 0], duration=0.5, fps=44100)
-        final_audio = concatenate_audioclips([hook_audio, silence, script_audio])
-        final_audio.write_audiofile("voice.mp3")
-        
-        hook_audio.close()
-        script_audio.close()
-        if os.path.exists("hook.mp3"): os.remove("hook.mp3")
-        if os.path.exists("script.mp3"): os.remove("script.mp3")
-    except Exception as e:
-        print(f"TTS Hatası: {e}")
-        return None
+    # HIZ: -5%
+    communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
+    await communicate_hook.save("hook.mp3")
+    communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
+    await communicate_script.save("script.mp3")
+    
+    hook_audio = AudioFileClip("hook.mp3")
+    script_audio = AudioFileClip("script.mp3")
+    silence = AudioClip(lambda t: [0, 0], duration=0.5, fps=44100)
+    
+    final_audio = concatenate_audioclips([hook_audio, silence, script_audio])
+    final_audio.write_audiofile("voice.mp3")
+    
+    hook_audio.close()
+    script_audio.close()
+    if os.path.exists("hook.mp3"): os.remove("hook.mp3")
+    if os.path.exists("script.mp3"): os.remove("script.mp3")
 
     audio = AudioFileClip("voice.mp3")
     total_duration = audio.duration
@@ -255,7 +257,6 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
-    # VİDEO İNDİRME DÖNGÜSÜ
     for query in visual_queries:
         if current_duration >= total_duration: break
         
@@ -266,18 +267,16 @@ async def generate_resources(content):
             try:
                 path = f"clip_{len(paths)}.mp4"
                 
-                # İNDİRME GARANTİSİ (Retry)
-                success = False
-                for _ in range(3): # 3 kere dene
+                # Retry mekanizması
+                for _ in range(3):
                     try:
                         r = requests.get(video_link, timeout=15)
                         if r.status_code == 200:
                             with open(path, "wb") as f: f.write(r.content)
-                            success = True
                             break
                     except: time.sleep(1)
-                
-                if success:
+
+                if os.path.exists(path) and os.path.getsize(path) > 1000:
                     c = VideoFileClip(path)
                     if c.duration > 1.0:
                         paths.append(path)
@@ -287,18 +286,7 @@ async def generate_resources(content):
             except:
                 if os.path.exists(path): os.remove(path)
 
-    # Hiç video inmezse, acil durum videolarını dene
-    if not paths:
-        print("⚠️ Görsel bulunamadı, acil durum sahneleri aranıyor...")
-        random.shuffle(EMERGENCY_SCENES)
-        for query in EMERGENCY_SCENES[:5]:
-             link = smart_scene_search(query)
-             if link:
-                 path = f"clip_emerg_{len(paths)}.mp4"
-                 with open(path, "wb") as f: f.write(requests.get(link).content)
-                 paths.append(path)
-
-    if not paths: return None # Hala yoksa pes et
+    if not paths: return None
     return paths, audio
 
 # --- EFEKTLER ---
@@ -366,7 +354,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v93_sniper.mp4"
+        out = "horror_v95_stable.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -384,15 +372,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSniper Modu (V93 Fix)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nStabil Mod (V95)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Kota çok dolu. 5 dakika beklemen gerek.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🏛️ Gemini 1.5 Flash (Garanti)\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -412,7 +400,7 @@ def handle(message):
             except Exception as e:
                 bot.reply_to(message, f"Gönderim hatası: {e}")
         else:
-            bot.edit_message_text("❌ Video render edilemedi (Montaj sorunu).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Video render edilemedi.", message.chat.id, msg.message_id)
             
     except Exception as e:
         bot.reply_to(message, f"Hata: {str(e)}")
