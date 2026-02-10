@@ -46,48 +46,55 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- V96 ÖZEL: ÇALIŞAN MODELİ BULMA FONKSİYONU ---
-def get_available_model():
+# --- V97 GÜNCELLEME: KALİTE ÖNCELİKLİ SEÇİM ---
+def get_best_model():
     """
-    Google API'ye sorar: 'Hangi modellerim açık?'
-    Ve çalışan ilk modeli döndürür.
+    Google'a sorar ve en 'ZEKİ' modeli seçmeye çalışır.
+    Sıralama: 2.0 Flash > 1.5 Pro > 1.5 Flash
     """
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
     try:
         r = requests.get(url, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            # 'generateContent' özelliğini destekleyen modelleri filtrele
-            valid_models = [
+            # Hesabında aktif olan tüm modelleri listele
+            available_models = [
                 m['name'].replace('models/', '') 
                 for m in data.get('models', []) 
                 if 'generateContent' in m.get('supportedGenerationMethods', [])
             ]
             
-            # Öncelik Sıralaması (Varsa bunları seç)
-            preferences = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-pro']
+            print(f"📋 Hesabındaki Modeller: {available_models}")
+
+            # KALİTE SIRALAMASI (Burayı değiştirdik)
+            priority_list = [
+                'gemini-2.0-flash',       # En yeni ve dengeli
+                'gemini-1.5-pro',         # En yaratıcı (Yazar)
+                'gemini-1.5-flash',       # En hızlı (Yedek)
+                'gemini-1.0-pro'          # Eski (Son çare)
+            ]
             
-            for pref in preferences:
-                for valid in valid_models:
-                    if pref in valid:
-                        print(f"✅ OTOMATİK KEŞİF: '{valid}' modeli seçildi.")
-                        return valid
+            for target in priority_list:
+                # Tam eşleşme veya versiyonlu eşleşme ara (örn: gemini-1.5-pro-001)
+                for real_model in available_models:
+                    if target in real_model:
+                        print(f"✅ KALİTE SEÇİMİ: '{real_model}' kullanılıyor.")
+                        return real_model
             
-            # Tercihler yoksa listedeki ilkini al
-            if valid_models:
-                print(f"⚠️ Tercihler bulunamadı, '{valid_models[0]}' kullanılıyor.")
-                return valid_models[0]
+            # Hiçbiri yoksa listedeki ilkini al
+            if available_models:
+                print(f"⚠️ Favoriler yok, '{available_models[0]}' kullanılıyor.")
+                return available_models[0]
                 
     except Exception as e:
-        print(f"Model listesi alınamadı: {e}")
+        print(f"Model seçimi hatası: {e}")
     
-    # Her şey başarısız olursa en garantiyi döndür
+    # Her şey çökerse varsayılan
     return "gemini-1.5-flash"
 
-# --- AI İÇERİK (V96: AUTO-DISCOVERY + CERRAH PROMPT) ---
+# --- AI İÇERİK (V97: KALİTE ODAKLI + CERRAH PROMPT) ---
 def get_content(topic):
-    # Model ismini tahmin etme, DOĞRUDAN SOR
-    current_model = get_available_model()
+    current_model = get_best_model()
     
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -109,7 +116,6 @@ def get_content(topic):
     
     print(f"🤖 Gemini'ye soruluyor ({current_model}): {topic}...")
 
-    # --- TEK VE GÜÇLÜ ATIŞ ---
     payload = {
         "contents": [{"parts": [{"text": base_prompt}]}],
         "safetySettings": safety_settings
@@ -119,15 +125,14 @@ def get_content(topic):
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
         r = requests.post(url, json=payload, timeout=30)
         
-        # 429 KOTA HATASI VARSA
         if r.status_code == 429:
             print("⚠️ Kota dolu (429). Bekleniyor...")
-            return "QUOTA_ERROR" # Özel hata kodu döndür
+            return "QUOTA_ERROR"
 
-        # 404 BULUNAMADI VARSA (Yine de olursa)
         if r.status_code == 404:
-            print("⚠️ Model bulunamadı (404).")
-            return None
+            print(f"⚠️ Model bulunamadı: {current_model}")
+            # Yedek olarak 1.5 flash dene
+            return None 
 
         if r.status_code == 200:
             response_json = r.json()
@@ -145,7 +150,6 @@ def get_content(topic):
                     word_count = len(script_text.split())
                     print(f"📊 Başarılı: {word_count} Kelime")
 
-                    # KELİME KONTROLÜ
                     if any(phrase in script_text.lower() for phrase in ["heard a noise", "bones cracked", "body hurt"]):
                             print("❌ Yasaklı ifade tespit edildi.")
                             return None
@@ -383,7 +387,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v96_autodiscovery.mp4"
+        out = "horror_v97_quality_first.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -401,7 +405,7 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nOtomatik Keşif Modu (V96)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKalite Odaklı Mod (V97)...\n")
         
         content = get_content(topic)
         
@@ -413,7 +417,7 @@ def handle(message):
             bot.edit_message_text("❌ Sistem hatası (Uygun model bulunamadı).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🔍 Model Bulundu ve Kullanıldı\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🔍 En İyi Model Seçildi\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
