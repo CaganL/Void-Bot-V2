@@ -46,55 +46,19 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- V97 GÜNCELLEME: KALİTE ÖNCELİKLİ SEÇİM ---
-def get_best_model():
-    """
-    Google'a sorar ve en 'ZEKİ' modeli seçmeye çalışır.
-    Sıralama: 2.0 Flash > 1.5 Pro > 1.5 Flash
-    """
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            # Hesabında aktif olan tüm modelleri listele
-            available_models = [
-                m['name'].replace('models/', '') 
-                for m in data.get('models', []) 
-                if 'generateContent' in m.get('supportedGenerationMethods', [])
-            ]
-            
-            print(f"📋 Hesabındaki Modeller: {available_models}")
-
-            # KALİTE SIRALAMASI (Burayı değiştirdik)
-            priority_list = [
-                'gemini-2.0-flash',       # En yeni ve dengeli
-                'gemini-1.5-pro',         # En yaratıcı (Yazar)
-                'gemini-1.5-flash',       # En hızlı (Yedek)
-                'gemini-1.0-pro'          # Eski (Son çare)
-            ]
-            
-            for target in priority_list:
-                # Tam eşleşme veya versiyonlu eşleşme ara (örn: gemini-1.5-pro-001)
-                for real_model in available_models:
-                    if target in real_model:
-                        print(f"✅ KALİTE SEÇİMİ: '{real_model}' kullanılıyor.")
-                        return real_model
-            
-            # Hiçbiri yoksa listedeki ilkini al
-            if available_models:
-                print(f"⚠️ Favoriler yok, '{available_models[0]}' kullanılıyor.")
-                return available_models[0]
-                
-    except Exception as e:
-        print(f"Model seçimi hatası: {e}")
-    
-    # Her şey çökerse varsayılan
-    return "gemini-1.5-flash"
-
-# --- AI İÇERİK (V97: KALİTE ODAKLI + CERRAH PROMPT) ---
+# --- AI İÇERİK (V98: ROTASYON MODU - LİSTENDEN SEÇMECE) ---
 def get_content(topic):
-    current_model = get_best_model()
+    # SENİN LİSTENDEN SEÇİLMİŞ "KOTA DOSTU" SIRALAMA
+    # Farklı aileleri (Lite, Flash, Pro, 2.0, 2.5) karıştırıyoruz ki biri dolunca diğeri çalışsın.
+    models = [
+        "gemini-2.0-flash-lite-001", # Genelde en az kullanılan hat
+        "gemini-flash-latest",       # Klasik flash
+        "gemini-2.5-flash",          # Yeni nesil
+        "gemini-2.0-flash-001",      # Stabil
+        "gemini-pro-latest",         # Eski ama güvenilir
+        "gemini-2.0-flash",          # Alternatif ad
+        "gemini-2.5-pro"             # En son çare (Ağır top)
+    ]
     
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -103,6 +67,7 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
+    # PROMPT: CERRAH MODU (V90 - En Sevdiğin)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
@@ -114,72 +79,80 @@ def get_content(topic):
         "4. **LENGTH:** 55-65 WORDS. Use commas to keep flow."
     )
     
-    print(f"🤖 Gemini'ye soruluyor ({current_model}): {topic}...")
+    print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
-    payload = {
-        "contents": [{"parts": [{"text": base_prompt}]}],
-        "safetySettings": safety_settings
-    }
-
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
-        r = requests.post(url, json=payload, timeout=30)
+    # --- DENETİM DÖNGÜSÜ ---
+    for i, current_model in enumerate(models): 
+        print(f"🔄 Deneme {i+1}/{len(models)}: {current_model} deneniyor...")
         
-        if r.status_code == 429:
-            print("⚠️ Kota dolu (429). Bekleniyor...")
-            return "QUOTA_ERROR"
+        payload = {
+            "contents": [{"parts": [{"text": base_prompt}]}],
+            "safetySettings": safety_settings
+        }
 
-        if r.status_code == 404:
-            print(f"⚠️ Model bulunamadı: {current_model}")
-            # Yedek olarak 1.5 flash dene
-            return None 
+        try:
+            # v1beta endpoint'i genelde tüm yeni modelleri kapsar
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
+            r = requests.post(url, json=payload, timeout=25)
+            
+            # --- HATA YÖNETİMİ ---
+            if r.status_code == 429:
+                print(f"⚠️ {current_model} KOTA DOLU (429). Hiç beklemeden sıradakine geçiliyor >>")
+                continue # Bekleme yapma, hemen diğerine geç
 
-        if r.status_code == 200:
-            response_json = r.json()
-            if 'candidates' in response_json and response_json['candidates']:
-                raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
-                parts = raw_text.split("|||")
-                
-                if len(parts) >= 6:
-                    script_text = parts[3].strip()
-                    hook_text = parts[1].strip()
+            if r.status_code == 404:
+                print(f"⚠️ {current_model} BULUNAMADI (404). Sıradakine geçiliyor >>")
+                continue
+
+            if r.status_code == 200:
+                response_json = r.json()
+                if 'candidates' in response_json and response_json['candidates']:
+                    raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
+                    parts = raw_text.split("|||")
                     
-                    if script_text.lower().startswith(hook_text.lower()):
-                        script_text = script_text[len(hook_text):].strip()
+                    if len(parts) >= 6:
+                        script_text = parts[3].strip()
+                        hook_text = parts[1].strip()
+                        
+                        if script_text.lower().startswith(hook_text.lower()):
+                            script_text = script_text[len(hook_text):].strip()
 
-                    word_count = len(script_text.split())
-                    print(f"📊 Başarılı: {word_count} Kelime")
+                        word_count = len(script_text.split())
+                        print(f"✅ BAŞARILI ({current_model}): {word_count} Kelime")
 
-                    if any(phrase in script_text.lower() for phrase in ["heard a noise", "bones cracked", "body hurt"]):
-                            print("❌ Yasaklı ifade tespit edildi.")
-                            return None
-                    
-                    raw_tags = parts[5].strip().replace(",", " ").split()
-                    valid_tags = [t for t in raw_tags if t.startswith("#")]
-                    
-                    raw_queries = parts[4].split(",")
-                    visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
-                    
-                    if len(visual_queries) < 12:
-                        visual_queries.extend(EMERGENCY_SCENES)
-                        random.shuffle(visual_queries)
-                        visual_queries = list(dict.fromkeys(visual_queries))[:20]
+                        # KELİME KONTROLÜ
+                        if any(phrase in script_text.lower() for phrase in ["heard a noise", "bones cracked", "body hurt"]):
+                             print("❌ Kalite Kontrol: Yasaklı ifade var. Diğer modele geçiliyor...")
+                             continue
+                        
+                        raw_tags = parts[5].strip().replace(",", " ").split()
+                        valid_tags = [t for t in raw_tags if t.startswith("#")]
+                        
+                        raw_queries = parts[4].split(",")
+                        visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
+                        
+                        if len(visual_queries) < 12:
+                            visual_queries.extend(EMERGENCY_SCENES)
+                            random.shuffle(visual_queries)
+                            visual_queries = list(dict.fromkeys(visual_queries))[:20]
 
-                    return {
-                        "title": parts[0].strip(),
-                        "hook": hook_text,
-                        "description": parts[2].strip(),
-                        "script": script_text,
-                        "visual_queries": visual_queries,
-                        "tags": " ".join(valid_tags)
-                    }
-        else:
-            print(f"⚠️ API Hatası: {r.status_code} - {r.text}")
+                        # VERİYİ DÖNDÜR (Artık seçici olma, bulduğunu al)
+                        return {
+                            "title": parts[0].strip(),
+                            "hook": hook_text,
+                            "description": parts[2].strip(),
+                            "script": script_text,
+                            "visual_queries": visual_queries,
+                            "tags": " ".join(valid_tags)
+                        }
+            else:
+                print(f"⚠️ API Hatası ({current_model}): {r.status_code}")
 
-    except Exception as e:
-        print(f"❌ Bağlantı Hatası: {e}")
-        return None
-    
+        except Exception as e:
+            print(f"❌ Bağlantı Hatası: {e}")
+            continue
+
+    print("❌ LİSTEDEKİ TÜM MODELLER DENENDİ, HEPSİ BAŞARISIZ OLDU.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -298,18 +271,16 @@ async def generate_resources(content):
             try:
                 path = f"clip_{len(paths)}.mp4"
                 
-                # İNDİRME GARANTİSİ (Retry)
-                success = False
+                # Retry mekanizması
                 for _ in range(3):
                     try:
                         r = requests.get(video_link, timeout=15)
                         if r.status_code == 200:
                             with open(path, "wb") as f: f.write(r.content)
-                            success = True
                             break
                     except: time.sleep(1)
-                
-                if success:
+
+                if os.path.exists(path) and os.path.getsize(path) > 1000:
                     c = VideoFileClip(path)
                     if c.duration > 1.0:
                         paths.append(path)
@@ -387,7 +358,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v97_quality_first.mp4"
+        out = "horror_v98_rotation.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -405,19 +376,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKalite Odaklı Mod (V97)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nRotasyon Modu (V98)...\n")
         
         content = get_content(topic)
         
-        if content == "QUOTA_ERROR":
-            bot.edit_message_text("🚫 Günlük limit dolmuş olabilir. Yarın tekrar dene.", message.chat.id, msg.message_id)
-            return
-            
         if not content:
-            bot.edit_message_text("❌ Sistem hatası (Uygun model bulunamadı).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İnanılmaz ama listedeki TÜM modellerin kotası dolmuş!", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🔍 En İyi Model Seçildi\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🔄 Yedek Model Devrede\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
