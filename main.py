@@ -46,18 +46,26 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V98: ROTASYON MODU - LİSTENDEN SEÇMECE) ---
+# --- AI İÇERİK (V99: HİDRA MODU - DEVASA LİSTE) ---
 def get_content(topic):
-    # SENİN LİSTENDEN SEÇİLMİŞ "KOTA DOSTU" SIRALAMA
-    # Farklı aileleri (Lite, Flash, Pro, 2.0, 2.5) karıştırıyoruz ki biri dolunca diğeri çalışsın.
+    # SENİN VERDİĞİN LİSTENİN GÜCÜ BURADA
+    # Öncelik sırasına göre dizdim: En Kaliteli -> En Hızlı -> Yedekler
     models = [
-        "gemini-2.0-flash-lite-001", # Genelde en az kullanılan hat
-        "gemini-flash-latest",       # Klasik flash
-        "gemini-2.5-flash",          # Yeni nesil
-        "gemini-2.0-flash-001",      # Stabil
-        "gemini-pro-latest",         # Eski ama güvenilir
-        "gemini-2.0-flash",          # Alternatif ad
-        "gemini-2.5-pro"             # En son çare (Ağır top)
+        # --- ELİT TİM (En Yüksek Kalite) ---
+        "gemini-exp-1206",             # Deneysel ama çok zeki
+        "gemini-2.5-pro",              # Yeni Amiral Gemisi
+        "gemini-2.5-flash",            # Hız ve Zeka
+        
+        # --- HIZ TİMİ (Kota Dostu) ---
+        "gemini-2.0-flash",            # Standart Hız
+        "gemini-2.0-flash-001",        # Stabil Sürüm
+        "gemini-2.0-flash-lite-001",   # En Hafif Sürüm
+        
+        # --- ESKİ TOPRAKLAR (Asla Yarı Yolda Bırakmaz) ---
+        "gemini-1.5-flash",            
+        "gemini-1.5-pro",
+        "gemini-pro-latest",
+        "gemini-flash-latest"
     ]
     
     safety_settings = [
@@ -67,7 +75,7 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # PROMPT: CERRAH MODU (V90 - En Sevdiğin)
+    # PROMPT: CERRAH MODU (Değişmedi, çünkü mükemmeldi)
     base_prompt = (
         f"You are a viral horror shorts director. Write a script about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
@@ -81,9 +89,9 @@ def get_content(topic):
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
 
-    # --- DENETİM DÖNGÜSÜ ---
-    for i, current_model in enumerate(models): 
-        print(f"🔄 Deneme {i+1}/{len(models)}: {current_model} deneniyor...")
+    # --- HİDRA DÖNGÜSÜ ---
+    for i, current_model in enumerate(models):
+        print(f"🔄 [{i+1}/{len(models)}] Deneniyor: {current_model}")
         
         payload = {
             "contents": [{"parts": [{"text": base_prompt}]}],
@@ -91,17 +99,17 @@ def get_content(topic):
         }
 
         try:
-            # v1beta endpoint'i genelde tüm yeni modelleri kapsar
+            # URL Yapısı
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
-            r = requests.post(url, json=payload, timeout=25)
+            r = requests.post(url, json=payload, timeout=20)
             
             # --- HATA YÖNETİMİ ---
             if r.status_code == 429:
-                print(f"⚠️ {current_model} KOTA DOLU (429). Hiç beklemeden sıradakine geçiliyor >>")
-                continue # Bekleme yapma, hemen diğerine geç
+                print(f"⚠️ {current_model} KOTA DOLU. Beklemeden geçiliyor >>")
+                continue # Hız kesme, diğerine geç
 
             if r.status_code == 404:
-                print(f"⚠️ {current_model} BULUNAMADI (404). Sıradakine geçiliyor >>")
+                print(f"⚠️ {current_model} BULUNAMADI. Geçiliyor >>")
                 continue
 
             if r.status_code == 200:
@@ -118,11 +126,11 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        print(f"✅ BAŞARILI ({current_model}): {word_count} Kelime")
+                        print(f"✅ ZAFER! {current_model} başardı: {word_count} Kelime")
 
                         # KELİME KONTROLÜ
                         if any(phrase in script_text.lower() for phrase in ["heard a noise", "bones cracked", "body hurt"]):
-                             print("❌ Kalite Kontrol: Yasaklı ifade var. Diğer modele geçiliyor...")
+                             print("❌ Yasaklı ifade var. Kalite için diğer modele geçiliyor...")
                              continue
                         
                         raw_tags = parts[5].strip().replace(",", " ").split()
@@ -136,7 +144,6 @@ def get_content(topic):
                             random.shuffle(visual_queries)
                             visual_queries = list(dict.fromkeys(visual_queries))[:20]
 
-                        # VERİYİ DÖNDÜR (Artık seçici olma, bulduğunu al)
                         return {
                             "title": parts[0].strip(),
                             "hook": hook_text,
@@ -149,10 +156,10 @@ def get_content(topic):
                 print(f"⚠️ API Hatası ({current_model}): {r.status_code}")
 
         except Exception as e:
-            print(f"❌ Bağlantı Hatası: {e}")
+            print(f"❌ Bağlantı Hatası ({current_model}): {e}")
             continue
 
-    print("❌ LİSTEDEKİ TÜM MODELLER DENENDİ, HEPSİ BAŞARISIZ OLDU.")
+    print("❌ İNANILMAZ AMA GERÇEK: Listedeki 10 modelin hepsi başarısız oldu.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -358,7 +365,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v98_rotation.mp4"
+        out = "horror_v99_hydra.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -376,15 +383,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nRotasyon Modu (V98)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nHidra Modu (V99)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İnanılmaz ama listedeki TÜM modellerin kotası dolmuş!", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Tüm modeller denendi ama sonuç alınamadı. (İnternet bağlantını kontrol et)", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🔄 Yedek Model Devrede\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🐉 10 Farklı Model Denendi ve Bulundu\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
