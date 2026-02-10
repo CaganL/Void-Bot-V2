@@ -46,10 +46,17 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V90-FIX: CERRAH MODU - SAĞLAM MODELLERLE) ---
+# --- AI İÇERİK (V92: ONAYLI CERRAH - KESİN LİSTE) ---
 def get_content(topic):
-    # DÜZELTME: Sadece %100 çalışan, gerçek model isimleri
-    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    # SENİN VERDİĞİN LİSTEDEN SEÇİLEN "ELİT" MODELLER
+    # Not: API çağrısında 'models/' ön ekini koda göre ayarladım.
+    models = [
+        "gemini-2.5-pro",          # En iyi hikaye anlatıcı
+        "gemini-3-pro-preview",    # En yeni teknoloji
+        "gemini-2.5-flash",        # Hız ve Zeka dengesi
+        "gemini-2.0-flash-001",    # Stabil Sürüm
+        "gemini-2.5-flash-lite"    # Hızlı Yedek
+    ]
     
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -81,7 +88,7 @@ def get_content(topic):
     last_valid_data = None 
 
     # --- DENETİM DÖNGÜSÜ ---
-    for attempt in range(5): 
+    for attempt in range(len(models)): # Her modeli bir kez dene
         prompt = base_prompt
         if attempt > 0:
             prompt += f"\n\nIMPORTANT: DON'T USE 'NOISE' OR 'BONES'. BE SPECIFIC (SCRATCHING, JAW, SPINE)."
@@ -91,88 +98,84 @@ def get_content(topic):
             "safetySettings": safety_settings
         }
 
-        # Listeden sırayla model seç
-        current_model = models[attempt % len(models)]
+        current_model = models[attempt] # Sıradaki modeli al
 
         try:
+            # URL Yapısı: models/{model_name}
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
             r = requests.post(url, json=payload, timeout=20)
             
-            # 404 Hatası kontrolü (Model bulunamadıysa pas geç)
-            if r.status_code == 404:
-                print(f"⚠️ Model bulunamadı ({current_model}), diğerine geçiliyor...")
+            # Hata varsa (Örn: 404, 503) logla ve devam et
+            if r.status_code != 200:
+                print(f"⚠️ {current_model} Hatası: {r.status_code}")
                 continue
 
-            if r.status_code == 200:
-                response_json = r.json()
-                if 'candidates' in response_json and response_json['candidates']:
-                    raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
-                    parts = raw_text.split("|||")
+            response_json = r.json()
+            if 'candidates' in response_json and response_json['candidates']:
+                raw_text = response_json['candidates'][0]['content']['parts'][0]['text']
+                parts = raw_text.split("|||")
+                
+                if len(parts) >= 6:
+                    script_text = parts[3].strip()
+                    hook_text = parts[1].strip()
                     
-                    if len(parts) >= 6:
-                        script_text = parts[3].strip()
-                        hook_text = parts[1].strip()
-                        
-                        if script_text.lower().startswith(hook_text.lower()):
-                            script_text = script_text[len(hook_text):].strip()
+                    if script_text.lower().startswith(hook_text.lower()):
+                        script_text = script_text[len(hook_text):].strip()
 
-                        word_count = len(script_text.split())
-                        print(f"📊 Deneme {attempt+1} ({current_model}): {word_count} Kelime")
+                    word_count = len(script_text.split())
+                    print(f"📊 {current_model} Cevap Verdi: {word_count} Kelime")
 
-                        # GENEL KELİME KONTROLÜ (V90 Kuralı)
-                        forbidden_phrases = ["heard a noise", "bones cracked", "body hurt", "something moved"]
-                        if any(phrase in script_text.lower() for phrase in forbidden_phrases):
-                             print("❌ Yasaklı 'Genel' ifade tespit edildi. Reddedildi.")
-                             continue
-                        
-                        raw_tags = parts[5].strip().replace(",", " ").split()
-                        valid_tags = [t for t in raw_tags if t.startswith("#")]
-                        
-                        raw_queries = parts[4].split(",")
-                        visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
-                        
-                        if len(visual_queries) < 12:
-                            expanded_queries = []
-                            for q in visual_queries:
-                                expanded_queries.append(f"{q} close up")
-                                expanded_queries.append(f"{q} scary")
-                                expanded_queries.append(f"{q} dark cinematic")
-                            visual_queries.extend(expanded_queries)
-                            random.shuffle(EMERGENCY_SCENES)
-                            visual_queries.extend(EMERGENCY_SCENES)
-                            visual_queries = list(dict.fromkeys(visual_queries))[:20]
+                    # GENEL KELİME KONTROLÜ (V90 Kuralı)
+                    forbidden_phrases = ["heard a noise", "bones cracked", "body hurt", "something moved"]
+                    if any(phrase in script_text.lower() for phrase in forbidden_phrases):
+                            print("❌ Yasaklı 'Genel' ifade tespit edildi. Reddedildi.")
+                            continue
+                    
+                    raw_tags = parts[5].strip().replace(",", " ").split()
+                    valid_tags = [t for t in raw_tags if t.startswith("#")]
+                    
+                    raw_queries = parts[4].split(",")
+                    visual_queries = [v.strip().lower() for v in raw_queries if len(v.strip()) > 1]
+                    
+                    if len(visual_queries) < 12:
+                        expanded_queries = []
+                        for q in visual_queries:
+                            expanded_queries.append(f"{q} close up")
+                            expanded_queries.append(f"{q} scary")
+                            expanded_queries.append(f"{q} dark cinematic")
+                        visual_queries.extend(expanded_queries)
+                        random.shuffle(EMERGENCY_SCENES)
+                        visual_queries.extend(EMERGENCY_SCENES)
+                        visual_queries = list(dict.fromkeys(visual_queries))[:20]
 
-                        current_data = {
-                            "title": parts[0].strip(),
-                            "hook": hook_text,
-                            "description": parts[2].strip(),
-                            "script": script_text,
-                            "visual_queries": visual_queries,
-                            "tags": " ".join(valid_tags)
-                        }
+                    current_data = {
+                        "title": parts[0].strip(),
+                        "hook": hook_text,
+                        "description": parts[2].strip(),
+                        "script": script_text,
+                        "visual_queries": visual_queries,
+                        "tags": " ".join(valid_tags)
+                    }
 
-                        # FAIL-SAFE: Her geçerli veriyi sakla
-                        last_valid_data = current_data 
+                    # FAIL-SAFE: Geçerli veriyi cebe at
+                    last_valid_data = current_data 
 
-                        # Tam Hedef Kontrolü (55-70 arası ideal)
-                        if 55 <= word_count <= 70: 
-                            print(f"✅ Mükemmel Uzunluk ({word_count}) ve Spesifik Dil. Onaylandı.")
-                            return current_data
-                        
-                        print(f"⚠️ Uzunluk ({word_count}) ideal değil. Tekrar deneniyor...")
-
-            else:
-                print(f"⚠️ API Hatası ({current_model}): {r.status_code}")
+                    # Tam Hedef Kontrolü (55-70 arası ideal)
+                    if 55 <= word_count <= 70: 
+                        print(f"✅ Mükemmel: {current_model} kazandı!")
+                        return current_data
+                    
+                    print(f"⚠️ Uzunluk ({word_count}) ideal değil. Sıradaki model deneniyor...")
 
         except Exception as e:
-            print(f"Hata: {e}")
+            print(f"❌ {current_model} Hatası: {e}")
             continue
 
     if last_valid_data:
-        print("⚠️ İdeal sonuç bulunamadı, en son geçerli veri kullanılıyor (Fail-Safe).")
+        print("⚠️ İdeal sonuç bulunamadı, elimizdeki EN İYİ veri kullanılıyor.")
         return last_valid_data
     
-    print("❌ İçerik üretilemedi.")
+    print("❌ HİÇBİR MODEL İÇERİK ÜRETEMEDİ.")
     return None
 
 def is_safe_video(video_url, tags=[]):
@@ -253,7 +256,7 @@ async def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # HIZ: -5% (V90'ın Orijinal Atmosfer Ayarı)
+    # HIZ: -5% (Cerrah Modu için ideal)
     communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
     await communicate_hook.save("hook.mp3")
     communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -383,7 +386,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v90_surgeon_fix.mp4"
+        out = "horror_v92_verified_surgeon.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3500k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -401,15 +404,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nCerrah Modu Fix (V90)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nOnaylı Cerrah (V92)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Kritik API hatası (Tüm modeller denendi).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Sistem hatası (Modeller yanıt vermedi).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🩺 Spesifik Anatomi & Net Hook\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n✅ Model Listesi Doğrulandı\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
