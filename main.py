@@ -46,8 +46,9 @@ EMERGENCY_SCENES = [
     "bone fracture x-ray", "bruised skin", "teeth falling out", "eye close up scary"
 ]
 
-# --- AI İÇERİK (V99 HİDRA MANTIĞI - DEĞİŞTİRMEDİM, ÇALIŞIYOR) ---
+# --- AI İÇERİK (V101: KASAP MODU - SIFIR DUYGU, SAF EYLEM) ---
 def get_content(topic):
+    # Model Listesi (V99 Hidra ile aynı - Çünkü çalışıyor)
     models = [
         "gemini-exp-1206", "gemini-2.5-pro", "gemini-2.5-flash", 
         "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001",
@@ -61,15 +62,22 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
+    # --- PROMPT GÜNCELLEMESİ: KASAP MODU ---
     base_prompt = (
-        f"You are a viral horror shorts director. Write a script about '{topic}'. "
+        f"You are NOT a storyteller. You are a FORENSIC CORONER reporting a death event about '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Specific Sensory) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 55-65 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
-        "CRITICAL RULES (10/10 SCORE CHECKLIST):\n"
-        "1. **HOOK PRECISION:** BANNED: 'Noise', 'Something'. REQUIRED: 'Scratching', 'Breathing', 'Tapping'.\n"
-        "2. **ANATOMICAL SPECIFICITY:** BANNED: 'Bones cracked'. REQUIRED: 'Jaw unhinged', 'Femur snapped', 'Ribs punctured'.\n"
-        "3. **SINGLE FATAL CLIMAX:** End with ONE massive physical break.\n"
-        "4. **LENGTH:** 55-65 WORDS. Use commas to keep flow."
+        "CLICKBAIT TITLE (High CTR) ||| PUNCHY HOOK (Formulaic) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 40-55 WORDS) ||| VISUAL_SCENES_LIST ||| #tag1 #tag2 #tag3\n\n"
+        "CRITICAL RULES (THE BUTCHER METHOD):\n"
+        "1. **HOOK FORMULA (STRICT):** Must follow: 'I heard/saw [NOUN] at [LOCATION].'\n"
+        "   - *Correct:* 'I heard breathing at the ATM.'\n"
+        "   - *Wrong:* 'The night was cold and I heard a noise.'\n"
+        "2. **STYLE = ROBOTIC ACTION:**\n"
+        "   - NO Adjectives (No 'scary', 'dark', 'eerie', 'sudden').\n"
+        "   - NO Emotions (No 'felt', 'froze', 'feared', 'screamed').\n"
+        "   - SYNTAX: Subject + Verb + Object. Short sentences. 'Hand touched shoulder. Neck snapped.'\n"
+        "3. **ANATOMICAL CLIMAX:** End with specific medical damage.\n"
+        "   - *Example:* 'C2 vertebra pulverized.' / 'Mandible detached from skull.'\n"
+        "4. **LENGTH:** Keep it under 55 words. Cut all fluff."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -94,13 +102,18 @@ def get_content(topic):
                     if len(parts) >= 6:
                         script_text = parts[3].strip()
                         hook_text = parts[1].strip()
+                        
+                        # Hook tekrarını temizle
                         if script_text.lower().startswith(hook_text.lower()):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
                         print(f"✅ ZAFER! {current_model} başardı: {word_count} Kelime")
 
-                        if any(phrase in script_text.lower() for phrase in ["heard a noise", "bones cracked", "body hurt"]):
+                        # KELİME KONTROLÜ (Duygu ve Atmosfer yasak)
+                        forbidden = ["scared", "froze", "felt", "dark night", "eerie", "suddenly"]
+                        if any(f in script_text.lower() for f in forbidden):
+                             print("❌ Yasaklı 'Duygu' kelimesi var. Daha soğuk olması için pas geçiliyor...")
                              continue
                         
                         raw_tags = parts[5].strip().replace(",", " ").split()
@@ -322,8 +335,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v100_final.mp4"
-        # Bitrate'i biraz dengeledim ki dosya boyutu aşırı şişmesin (upload hatasını önlemek için)
+        out = "horror_v101_butcher.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3000k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -341,15 +353,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nSon Kurye Modu (V100)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nKasap Modu (V101)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Tüm modeller denendi ama sonuç alınamadı.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🐉 Model Bulundu: OK\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🔪 Sıfatlar ve Duygular Kesildi\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
@@ -363,14 +375,12 @@ def handle(message):
             )
             if len(caption_text) > 1000: caption_text = caption_text[:1000]
             
-            # --- V100 GÜNCELLEMESİ: GÜÇLENDİRİLMİŞ YÜKLEME ---
-            bot.edit_message_text("📤 Video sunucuya yüklüyor (Lütfen bekle, büyük dosya)...", message.chat.id, msg.message_id)
+            bot.edit_message_text("📤 Yükleniyor...", message.chat.id, msg.message_id)
             
             sent = False
-            for attempt in range(3): # 3 Kere Dene
+            for attempt in range(3):
                 try:
                     with open(path, "rb") as v:
-                        # Timeout'u 600 saniye (10 dakika) yaptım!
                         bot.send_video(message.chat.id, v, caption=caption_text, timeout=600)
                     sent = True
                     break
@@ -379,7 +389,7 @@ def handle(message):
                     time.sleep(5)
             
             if not sent:
-                bot.reply_to(message, "❌ Video oluşturuldu ama Telegram'a yüklenirken bağlantı koptu (Dosya çok büyük olabilir).")
+                bot.reply_to(message, "❌ Yükleme zaman aşımına uğradı.")
                 
         else:
             bot.edit_message_text("❌ Video render edilemedi.", message.chat.id, msg.message_id)
