@@ -38,9 +38,9 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market", "daylight", "sun", "blue sky"
 ]
 
-# --- AI İÇERİK (V108: ALTIN ORAN - 25-32 SANİYE HEDEFİ) ---
+# --- AI İÇERİK (V109: FATAL IMPACT - KESİN VE SERT SON) ---
 def get_content(topic):
-    # HİDRA LİSTESİ (Aynı)
+    # HİDRA LİSTESİ
     models = [
         "gemini-exp-1206", "gemini-2.5-pro", "gemini-2.5-flash", 
         "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001",
@@ -54,18 +54,17 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # --- PROMPT GÜNCELLEMESİ: V108 ---
-    # Hedef: 45-55 Kelime. Bu aralık -5% hızla tam 25-32s yapar.
+    # --- PROMPT GÜNCELLEMESİ: V109 ---
     base_prompt = (
-        f"You are a VICTIM describing a violent physical trauma in a '{topic}'. "
+        f"You are a VICTIM describing a FATAL physical trauma in a '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (STRICTLY 45-55 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS (Comma Separated) ||| #tags\n\n"
-        "CRITICAL RULES (V108 GOLDILOCKS ZONE):\n"
-        "1. **LENGTH:** STRICTLY 45-55 WORDS. Aim for exactly 28 seconds of speech.\n"
-        "2. **HOOK:** Immediate POV action. 'I felt/heard...'.\n"
-        "3. **KINETIC CHAIN:** Impact 1 -> Impact 2 -> Final Break.\n"
-        "4. **STYLE:** Robotic Action. Subject + Verb + Object. No 'Suddenly', No 'Then'.\n"
-        "5. **MAIN_LOCATION:** ONE word setting."
+        "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (45-55 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
+        "CRITICAL RULES (V109 FATALITY):\n"
+        "1. **NO STORYTELLING:** BANNED: 'He ran away', 'I screamed', 'I cried', 'Someone helped'.\n"
+        "2. **CATASTROPHIC ENDING:** The trauma must end in SYSTEM FAILURE. (e.g., 'C2 Vertebra shattered', 'Skull fractured', 'Lungs collapsed'). NOT just a broken wrist.\n"
+        "3. **KINETIC CHAIN:** Grab -> Impact 1 (Hard Surface) -> Impact 2 (Bone Break) -> FINAL FATAL BLOW.\n"
+        "4. **STYLE:** Cold, Clinical, First-Person. Subject + Verb + Object.\n"
+        "5. **LENGTH:** 45-55 Words. Aim for 28-30 seconds."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -98,25 +97,25 @@ def get_content(topic):
                             script_text = script_text[len(hook_text):].strip()
 
                         word_count = len(script_text.split())
-                        print(f"✅ ZAFER! {current_model} başardı. Kelime Sayısı: {word_count} (Hedef: 45-55)")
+                        print(f"✅ ZAFER! {current_model} başardı. Kelime: {word_count}")
 
-                        # SÜRE KİLİDİ: 60 kelimeyi geçerse reddet (32 saniyeyi aşar)
-                        if word_count > 60:
-                            print("⚠️ Metin çok uzun (>60 kelime). 32s sınırını aşar. Reddediliyor...")
-                            continue
-                        
-                        # 40 kelimeden azsa reddet (25 saniyeden kısa kalır)
-                        if word_count < 40:
-                             print("⚠️ Metin çok kısa (<40 kelime). 25s altında kalır. Reddediliyor...")
+                        # V109 KATI FİLTRE: Hikaye anlatmaya kalkarsa engelle
+                        story_words = ["fled", "ran away", "screamed", "cried", "help me", "police", "woke up"]
+                        if any(w in script_text.lower() for w in story_words):
+                             print("❌ 'Hikaye' kelimesi tespit edildi (Kaçtı/Bağırdı). Reddediliyor...")
                              continue
 
-                        if any(f in script_text.lower() for f in ["darkness took", "faded away", "felt fear"]):
+                        # Süre Kontrolü (25-32s için)
+                        if word_count > 60: continue # Çok uzun
+                        if word_count < 40: continue # Çok kısa
+
+                        # Soyut Bitiş Kontrolü
+                        if any(f in script_text.lower() for f in ["darkness took", "faded away"]):
                              continue
                         
                         raw_tags = parts[7].strip().replace(",", " ").split()
                         raw_queries = parts[4].split(",")
                         
-                        # --- NAVIGATOR + LOOP KILLER SEARCH ---
                         visual_queries = []
                         for q in raw_queries:
                             clean_q = q.strip().lower()
@@ -208,14 +207,14 @@ def smart_scene_search(query):
     if not link: link = search_mixkit(query)
     return link
 
-# --- KAYNAK OLUŞTURMA (V108: -5% HIZ + 45-55 KELİME) ---
+# --- KAYNAK OLUŞTURMA ---
 async def generate_resources(content):
     hook = content["hook"]
     script = content["script"]
     visual_queries = content["visual_queries"]
     
     try:
-        # HIZ GERİ GELDİ: -5% (Atmosfer için şart)
+        # Hız: -5% (Altın Oran)
         communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
         await communicate_hook.save("hook.mp3")
         communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -243,7 +242,7 @@ async def generate_resources(content):
     used_links = set()
     current_duration = 0.0
     
-    print(f"🎯 Hedef Süre (V108): {total_duration:.2f}s (Tam 25-32 arası bekleniyor)")
+    print(f"🎯 Hedef Süre: {total_duration:.2f}s")
 
     for query in visual_queries:
         if current_duration >= target_duration: break 
@@ -337,7 +336,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v108_goldilocks.mp4"
+        out = "horror_v109_fatality.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3000k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -355,15 +354,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nAltın Oran Modu (V108)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nFatal Impact Modu (V109)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi (Süre kriterine uymadı).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Hikaye kurallara uymadı (Yumuşak bitti veya uzun oldu). Tekrar dene.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n⏱️ Hedef: 25-32 Saniye\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n💀 Kesin ve Sert Son\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
