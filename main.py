@@ -10,7 +10,7 @@ from moviepy.editor import (
     VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips, AudioClip
 )
 
-# BS4 Koruması
+# BS4 Koruması (Mixkit için)
 try:
     from bs4 import BeautifulSoup
     BS4_AVAILABLE = True
@@ -82,7 +82,7 @@ def is_safe_video(video_url, tags=[]):
         if b in text_to_check: return False
     return True
 
-# --- STOK VİDEO ARAMA ---
+# --- STOK VİDEO ARAMA (Optimize Edildi) ---
 def search_mixkit(query):
     if not BS4_AVAILABLE: return None
     try:
@@ -108,6 +108,7 @@ def search_pexels(query):
     return None
 
 def smart_scene_search(query):
+    # Önce Pexels, yoksa Mixkit
     link = search_pexels(query)
     if not link: link = search_mixkit(query) 
     return link
@@ -139,11 +140,13 @@ async def generate_resources(content):
     
     # 1. Ses Üretimi
     use_elevenlabs = True
+    # Hook için dene
     if not generate_elevenlabs_audio(hook, "hook.mp3"):
         comm = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
         await comm.save("hook.mp3")
         use_elevenlabs = False
 
+    # Script için dene
     if use_elevenlabs:
         if not generate_elevenlabs_audio(script, "script.mp3"):
              comm = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -158,6 +161,8 @@ async def generate_resources(content):
         silence = AudioClip(lambda t: [0, 0], duration=0.6, fps=44100)
         final_audio = concatenate_audioclips([h_audio, silence, s_audio])
         final_audio.write_audiofile("voice.mp3")
+        h_audio.close()
+        s_audio.close()
     except: return None
 
     # 2. Video İndirme
@@ -187,7 +192,7 @@ async def generate_resources(content):
     if not paths: return None
     return paths, final_audio
 
-# --- EFEKTLER ---
+# --- EFEKTLER (V112 ile Aynı - Eksiksiz) ---
 def clinical_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
@@ -231,7 +236,7 @@ def build_video(content):
             try:
                 c = VideoFileClip(p).without_audio()
                 dur = random.uniform(2.5, 3.5)
-                # Son klibi X-RAY yap
+                # Son klibi X-RAY yap (V112 Özelliği)
                 is_impact = (i >= len(paths) - 1)
                 clips.append(apply_processing(c, dur, is_impact))
             except: continue
@@ -245,8 +250,8 @@ def build_video(content):
         final = concatenate_videoclips(clips, method="compose").set_audio(audio)
         final = final.subclip(0, audio.duration)
         
-        out = "final_ultra.mp4"
-        # ÇÖKME ÖNLEYİCİ: threads=1
+        out = "final_output.mp4"
+        # ÇÖKME ÖNLEYİCİ: threads=1 (Railway için kritik)
         final.write_videofile(out, fps=24, codec="libx264", preset="ultrafast", bitrate="3000k", audio_bitrate="128k", threads=1, logger=None)
         
         audio.close()
@@ -258,18 +263,45 @@ def build_video(content):
         print(f"Hata: {e}")
         return None
 
+# --- TELEGRAM BOT KOMUTLARI ---
 @bot.message_handler(commands=["horror", "video"])
 def handle(message):
     try:
-        bot.reply_to(message, "💀 Profesyonel Mod (V113) Başlatılıyor...")
-        content = get_content(message.text.split(maxsplit=1)[1] if len(message.text.split())>1 else "scary story")
-        if content:
-            path = build_video(content)
-            if path:
-                with open(path, "rb") as v:
-                    bot.send_video(message.chat.id, v, caption=f"🎬 {content['title']}\n🎙️ Ses: ElevenLabs")
+        args = message.text.split(maxsplit=1)
+        topic = args[1] if len(args) > 1 else "scary story"
+        
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nElevenLabs Modu (V114)...\n")
+        
+        content = get_content(topic)
+        
+        if not content:
+            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
+            return
+
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Ses: ElevenLabs\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
+
+        path = build_video(content)
+        
+        if path and os.path.exists(path):
+            # DETAYLI CAPTION GERİ GELDİ
+            final_tags = f"{FIXED_HASHTAGS} {content['tags']}"
+            caption_text = (
+                f"🪝 **HOOK:**\n{content['hook']}\n\n"
+                f"🎬 **Başlık:**\n{content['title']}\n\n"
+                f"📝 **Hikaye:**\n{content['script']}\n\n"
+                f"#️⃣ **Etiketler:**\n{final_tags}"
+            )
+            # Telegram sınırı koruması
+            if len(caption_text) > 1000: caption_text = caption_text[:1000]
+
+            with open(path, "rb") as v:
+                bot.send_video(message.chat.id, v, caption=caption_text, timeout=600)
+        else:
+            bot.edit_message_text("❌ Render hatası.", message.chat.id, msg.message_id)
+            
     except Exception as e:
         bot.reply_to(message, f"Hata: {e}")
 
 if __name__ == "__main__":
+    print("Bot başlatılıyor...")
     bot.polling(non_stop=True)
