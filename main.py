@@ -38,9 +38,8 @@ BANNED_TERMS = [
     "shopping", "sale", "store", "market", "daylight", "sun", "blue sky"
 ]
 
-# --- AI İÇERİK (V109: FATAL IMPACT - KESİN VE SERT SON) ---
+# --- AI İÇERİK (V109 FATAL IMPACT İLE AYNI - ÇÜNKÜ MÜKEMMEL) ---
 def get_content(topic):
-    # HİDRA LİSTESİ
     models = [
         "gemini-exp-1206", "gemini-2.5-pro", "gemini-2.5-flash", 
         "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001",
@@ -54,17 +53,16 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # --- PROMPT GÜNCELLEMESİ: V109 ---
     base_prompt = (
         f"You are a VICTIM describing a FATAL physical trauma in a '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
         "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (45-55 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
-        "CRITICAL RULES (V109 FATALITY):\n"
-        "1. **NO STORYTELLING:** BANNED: 'He ran away', 'I screamed', 'I cried', 'Someone helped'.\n"
-        "2. **CATASTROPHIC ENDING:** The trauma must end in SYSTEM FAILURE. (e.g., 'C2 Vertebra shattered', 'Skull fractured', 'Lungs collapsed'). NOT just a broken wrist.\n"
-        "3. **KINETIC CHAIN:** Grab -> Impact 1 (Hard Surface) -> Impact 2 (Bone Break) -> FINAL FATAL BLOW.\n"
-        "4. **STYLE:** Cold, Clinical, First-Person. Subject + Verb + Object.\n"
-        "5. **LENGTH:** 45-55 Words. Aim for 28-30 seconds."
+        "CRITICAL RULES (V110 SAFE & STYLISH):\n"
+        "1. **NO STORYTELLING:** No 'ran away', no 'screamed'.\n"
+        "2. **CATASTROPHIC ENDING:** System failure (e.g., 'Spine severed').\n"
+        "3. **VISUAL METAPHORS:** For bone breaks, suggest 'Cracking ice', 'Snapping branch', 'Crumbling stone' in scene list to stay safe.\n"
+        "4. **STYLE:** Cold, Clinical. Subject + Verb + Object.\n"
+        "5. **LENGTH:** 45-55 Words."
     )
     
     print(f"🤖 Gemini'ye soruluyor: {topic}...")
@@ -99,37 +97,30 @@ def get_content(topic):
                         word_count = len(script_text.split())
                         print(f"✅ ZAFER! {current_model} başardı. Kelime: {word_count}")
 
-                        # V109 KATI FİLTRE: Hikaye anlatmaya kalkarsa engelle
-                        story_words = ["fled", "ran away", "screamed", "cried", "help me", "police", "woke up"]
-                        if any(w in script_text.lower() for w in story_words):
-                             print("❌ 'Hikaye' kelimesi tespit edildi (Kaçtı/Bağırdı). Reddediliyor...")
-                             continue
-
-                        # Süre Kontrolü (25-32s için)
-                        if word_count > 60: continue # Çok uzun
-                        if word_count < 40: continue # Çok kısa
-
-                        # Soyut Bitiş Kontrolü
-                        if any(f in script_text.lower() for f in ["darkness took", "faded away"]):
-                             continue
+                        if any(w in script_text.lower() for w in ["fled", "ran away", "help me"]): continue
+                        if word_count > 60 or word_count < 40: continue
+                        if any(f in script_text.lower() for f in ["darkness took", "faded away"]): continue
                         
                         raw_tags = parts[7].strip().replace(",", " ").split()
                         raw_queries = parts[4].split(",")
                         
                         visual_queries = []
+                        # Güvenli ve Stilize Arama
                         for q in raw_queries:
                             clean_q = q.strip().lower()
                             if len(clean_q) > 1:
-                                visual_queries.append(f"{clean_q} inside {location_keyword} dark horror")
+                                visual_queries.append(f"{clean_q} macro close up") # Macro çekimler daha pahalı durur
+                                visual_queries.append(f"{clean_q} silhouette dark") # Silüetler güvenlidir
 
-                        modifiers = ["close up", "low angle", "blurry", "cinematic"]
+                        modifiers = ["medical", "x-ray", "mri", "microscope"] # Bilimsel hava kat
                         for variant in search_variants:
                             for mod in modifiers:
-                                visual_queries.append(f"{variant} {mod} horror")
+                                visual_queries.append(f"{variant} {mod}")
                         
-                        details = ["wall", "floor", "ceiling", "window", "door", "light"]
-                        for detail in details:
-                            visual_queries.append(f"{location_keyword} {detail} texture horror")
+                        # Soyut Kavramlar (Kan yerine)
+                        visual_queries.append("red ink in water")
+                        visual_queries.append("cracked glass black background")
+                        visual_queries.append("breaking dry branch close up")
 
                         random.shuffle(visual_queries)
                         visual_queries = list(dict.fromkeys(visual_queries))[:35] 
@@ -158,14 +149,16 @@ def is_safe_video(video_url, tags=[]):
 def search_mixkit(query):
     if not BS4_AVAILABLE: return None
     try:
-        search_url = f"https://mixkit.co/free-stock-video/{query.replace(' ', '-')}/"
+        # Mixkit araması bazen boş dönüyor, daha genel aratıp içinden seçelim
+        search_url = f"https://mixkit.co/free-stock-video/{query.split()[0]}/" # Sadece ilk kelimeyi dene
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(search_url, headers=headers, timeout=5)
         if response.status_code != 200: return None
         soup = BeautifulSoup(response.text, 'html.parser')
         videos = soup.find_all('video')
         if not videos: return None
-        return videos[0].get('src')
+        # Rastgele birini seç ki hep aynısı gelmesin
+        return random.choice(videos[:3]).get('src')
     except: pass
     return None
 
@@ -202,9 +195,10 @@ def search_pixabay(query):
     return None
 
 def smart_scene_search(query):
+    # Mixkit'i de aktif kullan
     link = search_pexels(query)
+    if not link: link = search_mixkit(query) # Mixkit öne alındı
     if not link: link = search_pixabay(query)
-    if not link: link = search_mixkit(query)
     return link
 
 # --- KAYNAK OLUŞTURMA ---
@@ -214,7 +208,7 @@ async def generate_resources(content):
     visual_queries = content["visual_queries"]
     
     try:
-        # Hız: -5% (Altın Oran)
+        # V110: Atmosfer için -5% hız
         communicate_hook = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
         await communicate_hook.save("hook.mp3")
         communicate_script = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
@@ -272,26 +266,41 @@ async def generate_resources(content):
     if not paths: return None
     return paths, audio
 
-# --- EFEKTLER ---
-def cold_horror_grade(image):
+# --- V110 EFEKTLER (PAHALI GÖRÜNÜM) ---
+def clinical_grade(image):
+    """
+    Videoya soğuk, mavi/yeşilimsi 'Adli Tıp' (Forensic) havası verir.
+    Ayrıca kontrastı artırır.
+    """
     img_f = image.astype(float)
+    # 1. Siyah Beyaza Yaklaştır (Desaturate)
     gray = np.mean(img_f, axis=2, keepdims=True)
-    desaturated = img_f * 0.3 + gray * 0.7 
-    tint_matrix = np.array([0.9, 1.0, 1.1])
-    cold_img = desaturated * tint_matrix
-    cold_img = cold_img * 0.6 
-    return np.clip(cold_img, 0, 255).astype(np.uint8)
+    desaturated = img_f * 0.4 + gray * 0.6 
+    
+    # 2. Soğuk/Yeşil Tint Ekle (Matrix/Saw Havası)
+    # R, G, B çarpanları: Kırmızı az, Yeşil/Mavi çok
+    tint_matrix = np.array([0.8, 1.1, 1.2]) 
+    graded_img = desaturated * tint_matrix
+    
+    # 3. Kontrast Artır (Daha keskin görünsün)
+    graded_img = (graded_img - 128) * 1.2 + 128
+    
+    return np.clip(graded_img, 0, 255).astype(np.uint8)
 
-def flashback_effect(clip):
-    return clip.fx(vfx.blackwhite).fx(vfx.speedx, 0.6)
+def xray_effect(clip):
+    """
+    Renkleri ters çevirerek 'Röntgen' etkisi yaratır.
+    """
+    return clip.fx(vfx.invert_colors)
 
-def apply_processing(clip, duration):
+def apply_processing(clip, duration, is_impact_moment=False):
     if clip.duration < duration:
         clip = vfx.loop(clip, duration=duration)
     else:
         start = random.uniform(0, clip.duration - duration)
         clip = clip.subclip(start, start + duration)
     
+    # Dikey Format
     target_ratio = W / H
     if clip.w / clip.h > target_ratio:
         clip = clip.resize(height=H)
@@ -300,8 +309,17 @@ def apply_processing(clip, duration):
         clip = clip.resize(width=W)
         clip = clip.crop(y1=clip.h/2 - H/2, width=W, height=H)
 
-    clip = clip.resize(lambda t: 1 + 0.02 * t).set_position(('center', 'center'))
-    clip = clip.fl_image(cold_horror_grade)
+    # V110: Sürekli Zoom (Yavaşça yaklaşma - Gerilim için)
+    clip = clip.resize(lambda t: 1 + 0.04 * t).set_position(('center', 'center'))
+    
+    # Renk Efekti
+    if is_impact_moment:
+        # Darbe anıysa X-Ray yap
+        clip = xray_effect(clip)
+    else:
+        # Normal anlarda Klinik filtre
+        clip = clip.fl_image(clinical_grade)
+        
     return clip
 
 # --- MONTAJ ---
@@ -314,21 +332,32 @@ def build_video(content):
         clips = []
         current_total_duration = 0.0
         
-        for p in paths:
+        # Son klip (Final Impact) için özel işaretleme
+        total_clips_needed = int(audio.duration / 3) + 1
+        
+        for i, p in enumerate(paths):
             try:
                 c = VideoFileClip(p).without_audio()
-                dur = random.uniform(2.5, 4.0)
-                processed = apply_processing(c, dur)
+                dur = random.uniform(2.5, 3.5)
+                
+                # Son 2 klip "Impact Moment" sayılır (X-Ray olabilir)
+                is_impact = False
+                if i >= len(paths) - 2:
+                     # %50 şansla X-Ray yap (Hepsi olmasın)
+                     if random.random() > 0.5: is_impact = True
+
+                processed = apply_processing(c, dur, is_impact_moment=is_impact)
                 clips.append(processed)
                 current_total_duration += processed.duration
             except: continue
 
+        # Loop Killer (Gerekirse)
         original_pool = list(clips) 
-        
         while current_total_duration < audio.duration:
             if not original_pool: break
             random_clip = random.choice(original_pool).copy()
-            random_clip = flashback_effect(random_clip)
+            # Tekrar edenleri X-Ray yapma, sadece siyah beyaz yap
+            random_clip = random_clip.fx(vfx.blackwhite).fx(vfx.speedx, 0.6)
             clips.append(random_clip)
             current_total_duration += random_clip.duration
 
@@ -336,7 +365,7 @@ def build_video(content):
         if final.duration > audio.duration:
             final = final.subclip(0, audio.duration)
         
-        out = "horror_v109_fatality.mp4"
+        out = "horror_v110_safe_stylist.mp4"
         final.write_videofile(out, fps=24, codec="libx264", preset="veryfast", bitrate="3000k", audio_bitrate="128k", threads=4, logger=None)
         
         audio.close()
@@ -354,15 +383,15 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nFatal Impact Modu (V109)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nGüvenli Stilist Modu (V110)...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ Hikaye kurallara uymadı (Yumuşak bitti veya uzun oldu). Tekrar dene.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n💀 Kesin ve Sert Son\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎨 Klinik Filtre + X-Ray Efekti\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
