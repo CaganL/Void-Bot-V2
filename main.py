@@ -1,3 +1,4 @@
+
 import os
 import telebot
 import requests
@@ -16,10 +17,17 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (SANSÜRSÜZ VIRAL MOD + RATE LIMIT KORUMASI) ---
+# --- GEMINI: SENARYO OLUŞTURMA (ZIRHLI MODEL LİSTESİ) ---
 def get_content(topic):
-    # Google'ın en güncel ve çalışan model isimleri
-    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"]
+    # Google'ın versiyon kodlu, asla 404 vermeyen kesin isimleri:
+    models = [
+        "gemini-2.0-flash", 
+        "gemini-1.5-flash-002", 
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b", 
+        "gemini-1.5-pro-002", 
+        "gemini-pro"
+    ]
     
     # TÜM SANSÜR FİLTRELERİNİ KAPATIYORUZ 
     safety_settings = [
@@ -61,13 +69,15 @@ def get_content(topic):
                     print(f"⚠️ Format Hatası ({current_model}): Gemini eksik parça yolladı.", flush=True)
             
             elif r.status_code == 429:
-                # Çok fazla istek atarsak çökmek yerine 3 saniye bekleyip diğer modele geçecek
+                # Çok fazla istek atarsak çökmek yerine 3 saniye bekleyip listedeki DİĞER modele geçecek
                 print(f"⏳ {current_model} Hız Sınırı (429)! Diğer modele geçmeden önce 3 saniye bekleniyor...", flush=True)
                 time.sleep(3) 
                 continue
                 
             else:
+                # 404 veya başka bir hata verirse loga yazıp diğerine geçer
                 print(f"❌ Gemini API Hatası ({current_model}): {r.status_code} - {r.text}", flush=True)
+                continue
                 
         except Exception as e:
             print(f"❌ İstek Hatası ({current_model}): {e}", flush=True)
@@ -108,12 +118,12 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Güçlendirilmiş Viral Mod)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Zırhlı Model Sürümü)...")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi. (API sınırlarına takıldı, lütfen 1 dakika sonra tekrar deneyin.)", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi. (Tüm yedek modeller denendi ama API sınırlarına takıldı, lütfen 1 dakika bekleyin.)", message.chat.id, msg.message_id)
             return
 
         bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda Callum seslendiriyor...", message.chat.id, msg.message_id)
@@ -156,5 +166,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ GÜÇLENDİRİLMİŞ VİRAL SÜRÜM Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ ZIRHLI MODEL SÜRÜMÜ Aktif!", flush=True)
     bot.polling(non_stop=True)
