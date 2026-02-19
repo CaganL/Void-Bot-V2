@@ -1,6 +1,7 @@
 import os
 import telebot
 import requests
+import time
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -15,11 +16,12 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (SANSÜRSÜZ VIRAL MOD) ---
+# --- GEMINI: SENARYO OLUŞTURMA (SANSÜRSÜZ VIRAL MOD + RATE LIMIT KORUMASI) ---
 def get_content(topic):
-    models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    # Google'ın en güncel ve çalışan model isimleri
+    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"]
     
-    # TÜM SANSÜR FİLTRELERİNİ KAPATIYORUZ (Korku hikayeleri engellenmesin diye)
+    # TÜM SANSÜR FİLTRELERİNİ KAPATIYORUZ 
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -56,9 +58,16 @@ def get_content(topic):
                         "tags": parts[7].strip()
                     }
                 else:
-                    print(f"⚠️ Format Hatası ({current_model}): Gemini eksik parça yolladı. Raw Text: {raw_text}", flush=True)
+                    print(f"⚠️ Format Hatası ({current_model}): Gemini eksik parça yolladı.", flush=True)
+            
+            elif r.status_code == 429:
+                # Çok fazla istek atarsak çökmek yerine 3 saniye bekleyip diğer modele geçecek
+                print(f"⏳ {current_model} Hız Sınırı (429)! Diğer modele geçmeden önce 3 saniye bekleniyor...", flush=True)
+                time.sleep(3) 
+                continue
+                
             else:
-                print(f"❌ Gemini Sansür/API Hatası ({current_model}): {r.status_code} - {r.text}", flush=True)
+                print(f"❌ Gemini API Hatası ({current_model}): {r.status_code} - {r.text}", flush=True)
                 
         except Exception as e:
             print(f"❌ İstek Hatası ({current_model}): {e}", flush=True)
@@ -99,12 +108,12 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Sansürsüz Twist Modu)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Güçlendirilmiş Viral Mod)...")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi. (Tüm modeller denendi ama sonuç alınamadı, konsola bakınız)", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi. (API sınırlarına takıldı, lütfen 1 dakika sonra tekrar deneyin.)", message.chat.id, msg.message_id)
             return
 
         bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda Callum seslendiriyor...", message.chat.id, msg.message_id)
@@ -147,5 +156,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ SANSÜRSÜZ VİRAL SÜRÜM Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ GÜÇLENDİRİLMİŞ VİRAL SÜRÜM Aktif!", flush=True)
     bot.polling(non_stop=True)
