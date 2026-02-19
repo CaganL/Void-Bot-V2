@@ -3,8 +3,6 @@ import telebot
 import requests
 import random
 import time
-import asyncio
-import edge_tts
 import numpy as np
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips, AudioClip
@@ -24,16 +22,13 @@ PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 
-# Varsayılan Ses: Antoni (Ciddi, Tok Erkek Sesi)
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "ErXwobaYiN019PkySvjV") 
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 W, H = 720, 1280
 
-# --- SABİT ETİKETLER ---
+# --- SABİT ETİKETLER & YASAKLI KELİMELER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
-
-# --- YASAKLI KELİMELER ---
 BANNED_TERMS = [
     "happy", "smile", "laugh", "business", "corporate", "office", "working", 
     "family", "couple", "romantic", "wedding", "party", "celebration", 
@@ -82,7 +77,7 @@ def is_safe_video(video_url, tags=[]):
         if b in text_to_check: return False
     return True
 
-# --- STOK VİDEO ARAMA (Optimize Edildi) ---
+# --- STOK VİDEO ARAMA ---
 def search_mixkit(query):
     if not BS4_AVAILABLE: return None
     try:
@@ -108,62 +103,61 @@ def search_pexels(query):
     return None
 
 def smart_scene_search(query):
-    # Önce Pexels, yoksa Mixkit
     link = search_pexels(query)
     if not link: link = search_mixkit(query) 
     return link
 
-# --- SES MOTORU: ELEVENLABS (Yedek: Edge-TTS) ---
+# --- SES MOTORU: ELEVENLABS (Sadece) ---
 def generate_elevenlabs_audio(text, filename):
-    if not ELEVENLABS_API_KEY: return False
+    if not ELEVENLABS_API_KEY: 
+        print("❌ ElevenLabs API Anahtarı eksik!")
+        return False
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
     headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": ELEVENLABS_API_KEY}
-    # Turbo v2.5 kullanıyoruz (Hızlı ve Ucuz)
     data = {"text": text, "model_id": "eleven_turbo_v2_5", "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
     
     try:
         r = requests.post(url, json=data, headers=headers, timeout=30)
         if r.status_code == 200:
             with open(filename, 'wb') as f: f.write(r.content)
-            print("✅ ElevenLabs Başarılı")
             return True
         else:
             print(f"❌ ElevenLabs Hatası: {r.status_code} - {r.text}")
             return False
-    except: return False
+    except Exception as e: 
+        print(f"❌ ElevenLabs Bağlantı Hatası: {e}")
+        return False
 
-# --- KAYNAK OLUŞTURMA ---
-async def generate_resources(content):
+# --- KAYNAK OLUŞTURMA (Senkron) ---
+def generate_resources(content):
     hook = content["hook"]
     script = content["script"]
     visual_queries = content["visual_queries"]
     
     # 1. Ses Üretimi
-    use_elevenlabs = True
-    # Hook için dene
-    if not generate_elevenlabs_audio(hook, "hook.mp3"):
-        comm = edge_tts.Communicate(hook, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
-        await comm.save("hook.mp3")
-        use_elevenlabs = False
-
-    # Script için dene
-    if use_elevenlabs:
-        if not generate_elevenlabs_audio(script, "script.mp3"):
-             comm = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
-             await comm.save("script.mp3")
-    else:
-        comm = edge_tts.Communicate(script, "en-US-ChristopherNeural", rate="-5%", pitch="-5Hz")
-        await comm.save("script.mp3")
+    if not generate_elevenlabs_audio(hook, "hook.mp3"): return None
+    if not generate_elevenlabs_audio(script, "script.mp3"): return None
 
     try:
         h_audio = AudioFileClip("hook.mp3")
         s_audio = AudioFileClip("script.mp3")
-        silence = AudioClip(lambda t: [0, 0], duration=0.6, fps=44100)
+        
+        # Güvenli Sessizlik Ekleme
+        silence_duration = 0.6
+        silence = AudioClip(lambda t: 0, duration=silence_duration, fps=44100) 
+        
         final_audio = concatenate_audioclips([h_audio, silence, s_audio])
-        final_audio.write_audiofile("voice.mp3")
+        final_audio.write_audiofile("voice.mp3", logger=None)
+        
         h_audio.close()
         s_audio.close()
-    except: return None
+        
+        # Geçici ses dosyalarını temizle
+        if os.path.exists("hook.mp3"): os.remove("hook.mp3")
+        if os.path.exists("script.mp3"): os.remove("script.mp3")
+    except Exception as e:
+        print(f"Ses birleştirme hatası: {e}")
+        return None
 
     # 2. Video İndirme
     paths = []
@@ -192,7 +186,7 @@ async def generate_resources(content):
     if not paths: return None
     return paths, final_audio
 
-# --- EFEKTLER (V112 ile Aynı - Eksiksiz) ---
+# --- EFEKTLER ---
 def clinical_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
@@ -217,7 +211,6 @@ def apply_processing(clip, duration, is_impact=False):
     else:
         clip = clip.resize(width=W).crop(y1=clip.h/2-H/2, width=W, height=H)
 
-    # Yavaş Zoom
     clip = clip.resize(lambda t: 1 + 0.04 * t).set_position(('center', 'center'))
     
     if is_impact: clip = xray_effect(clip)
@@ -227,7 +220,7 @@ def apply_processing(clip, duration, is_impact=False):
 # --- MONTAJ ---
 def build_video(content):
     try:
-        res = asyncio.run(generate_resources(content))
+        res = generate_resources(content)  # asyncio.run kaldırıldı
         if not res: return None
         paths, audio = res
             
@@ -236,7 +229,6 @@ def build_video(content):
             try:
                 c = VideoFileClip(p).without_audio()
                 dur = random.uniform(2.5, 3.5)
-                # Son klibi X-RAY yap (V112 Özelliği)
                 is_impact = (i >= len(paths) - 1)
                 clips.append(apply_processing(c, dur, is_impact))
             except: continue
@@ -251,7 +243,6 @@ def build_video(content):
         final = final.subclip(0, audio.duration)
         
         out = "final_output.mp4"
-        # ÇÖKME ÖNLEYİCİ: threads=1 (Railway için kritik)
         final.write_videofile(out, fps=24, codec="libx264", preset="ultrafast", bitrate="3000k", audio_bitrate="128k", threads=1, logger=None)
         
         audio.close()
@@ -260,7 +251,7 @@ def build_video(content):
             if os.path.exists(p): os.remove(p)
         return out
     except Exception as e:
-        print(f"Hata: {e}")
+        print(f"Montaj Hatası: {e}")
         return None
 
 # --- TELEGRAM BOT KOMUTLARI ---
@@ -270,20 +261,19 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nElevenLabs Modu (V114)...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nElevenLabs Pro Modu Devrede...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi. (Gemini API yanıt vermedi veya sansüre takıldı)", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Ses: ElevenLabs\n📍 Mekan: {content['location'].upper()}\n⏳ Render...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Ses: ElevenLabs\n📍 Mekan: {content['location'].upper()}\n⏳ Render İşlemi Başladı...", message.chat.id, msg.message_id)
 
         path = build_video(content)
         
         if path and os.path.exists(path):
-            # DETAYLI CAPTION GERİ GELDİ
             final_tags = f"{FIXED_HASHTAGS} {content['tags']}"
             caption_text = (
                 f"🪝 **HOOK:**\n{content['hook']}\n\n"
@@ -291,17 +281,20 @@ def handle(message):
                 f"📝 **Hikaye:**\n{content['script']}\n\n"
                 f"#️⃣ **Etiketler:**\n{final_tags}"
             )
-            # Telegram sınırı koruması
             if len(caption_text) > 1000: caption_text = caption_text[:1000]
 
             with open(path, "rb") as v:
                 bot.send_video(message.chat.id, v, caption=caption_text, timeout=600)
+                
+            # Gönderim başarılı olunca kalıntıları temizle
+            os.remove(path)
+            if os.path.exists("voice.mp3"): os.remove("voice.mp3")
         else:
-            bot.edit_message_text("❌ Render hatası.", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ Render hatası. Videoyu oluştururken bir sorun yaşandı.", message.chat.id, msg.message_id)
             
     except Exception as e:
-        bot.reply_to(message, f"Hata: {e}")
+        bot.reply_to(message, f"Bot Hatası: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor...")
+    print("Bot başlatılıyor... Saf ElevenLabs sürümü aktif.")
     bot.polling(non_stop=True)
