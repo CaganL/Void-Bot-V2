@@ -6,6 +6,8 @@ import requests
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
+
+# Varsayılan Ses: Antoni (Ciddi, Tok Erkek Sesi)
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "ErXwobaYiN019PkySvjV") 
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
@@ -22,11 +24,12 @@ def get_content(topic):
     base_prompt = (
         f"You are a VICTIM describing a FATAL physical trauma in a '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE ||| PUNCHY HOOK (Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (45-55 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
+        "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS, Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (40-50 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
         "RULES (PRO MODE):\n"
         "1. NO STORYTELLING. No 'ran away', no 'screamed'.\n"
         "2. ENDING: Immediate system failure (e.g. 'Spine severed').\n"
-        "3. STYLE: Cold, Clinical."
+        "3. STYLE: Cold, Clinical.\n"
+        "4. STRICT RULE: DO NOT repeat the Hook in the Narration Script. The script must continue directly from where the hook left off."
     )
     
     for current_model in models:
@@ -106,11 +109,10 @@ def handle(message):
                 f"📝 **HİKAYE:**\n{content['script']}\n\n"
                 f"#️⃣ **ETİKETLER:**\n{final_tags}"
             )
-            # Metin sınırını koru
+            
             if len(caption_text) > 1000: caption_text = caption_text[:1000]
 
             with open(audio_filename, "rb") as audio:
-                # Videoyu değil, direkt dinlenebilir Ses (Audio) formatında gönderiyoruz
                 bot.send_audio(
                     message.chat.id, 
                     audio, 
