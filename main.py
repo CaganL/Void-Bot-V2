@@ -15,21 +15,22 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (YOUTUBE PARA KAZANMA DOSTU) ---
+# --- GEMINI: SENARYO OLUŞTURMA (VIRAL RETENTION MODU) ---
 def get_content(topic):
-    # En hızlı modelleri seçtik
     models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}]
 
+    # Prompt tamamen "Minimalist, Sert ve Twist" odaklı güncellendi
     base_prompt = (
         f"You are experiencing a terrifying, mysterious encounter related to '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS, Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
-        "RULES (YOUTUBE SAFE & VIRAL):\n"
-        "1. NO GORE, NO BLOOD, NO MEDICAL TERMS. (Never use words like: organs, ruptured, severed, spine, bleeding, fatal, death).\n"
-        "2. PSYCHOLOGICAL DREAD: Build fear through senses. Unnatural silence, heavy pressure, freezing temperatures, moving shadows, a feeling of being watched.\n"
-        "3. IMPLIED ENDING: End with an eerie realization, sudden darkness, or a chilling final thought instead of physical death (e.g., 'My body stopped responding as the lights went out.', 'The whispering stopped, but I wasn't alone.').\n"
-        "4. STRICT RULE: DO NOT repeat the Hook in the Narration Script. The script must continue directly from where the hook left off."
+        "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS. Relatable and minimalist. e.g., 'I locked that door.', 'The bed creaked.') ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
+        "RULES (VIRAL SHORTS MODE):\n"
+        "1. NO GORE, NO BLOOD, NO MEDICAL TERMS. (Never use: organs, ruptured, severed, spine, bleeding, fatal, death).\n"
+        "2. STYLE: Minimalist, sharp, relatable everyday horror. Use short, punchy sentences. NO poetic adjectives.\n"
+        "3. THE HOOK: Must be an immediate, everyday anomaly. Just raw facts (e.g., 'It was open. I locked it.').\n"
+        "4. THE ENDING: Must be an ABRUPT CLIFFHANGER or a SUDDEN TWIST. Active verbs only. (e.g., 'Then the breathing came from under the bed.', 'It didn't step out. It reached.').\n"
+        "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook."
     )
     
     for current_model in models:
@@ -81,7 +82,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Psikolojik Gerilim + Callum)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Viral Twist Modu)...")
         
         content = get_content(topic)
         
@@ -130,5 +131,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ YOUTUBE DOSTU (Callum) Sürümü Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ VIRAL RETENTION Sürümü Aktif!", flush=True)
     bot.polling(non_stop=True)
