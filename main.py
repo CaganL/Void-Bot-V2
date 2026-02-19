@@ -5,10 +5,10 @@ import requests
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 
-# Varsayılan Ses: Antoni (Ciddi, Tok Erkek Sesi)
-ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "ErXwobaYiN019PkySvjV") 
+# Varsayılan Ses Değiştirildi: Callum (Hırıltılı, Gergin Kurban Sesi)
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "N2lVS1w4EtoT3dr4eOWO") 
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
@@ -17,14 +17,14 @@ FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
 # --- GEMINI: SENARYO OLUŞTURMA ---
 def get_content(topic):
-    # En hızlı modelleri seçtik
     models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}]
 
+    # Süreyi 28-32 saniye bandına çekmek için kelime sayısı (55-65) olarak güncellendi.
     base_prompt = (
         f"You are a VICTIM describing a FATAL physical trauma in a '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS, Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (40-50 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
+        "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS, Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
         "RULES (PRO MODE):\n"
         "1. NO STORYTELLING. No 'ran away', no 'screamed'.\n"
         "2. ENDING: Immediate system failure (e.g. 'Spine severed').\n"
@@ -58,7 +58,6 @@ def generate_elevenlabs_audio(text, filename):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
     headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": ELEVENLABS_API_KEY}
     
-    # Text parametresi ElevenLabs'e gidiyor
     data = {"text": text, "model_id": "eleven_turbo_v2_5", "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
     
     try:
@@ -82,25 +81,21 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Şimşek Modu)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Callum Sesi Aktif)...")
         
-        # 1. Senaryoyu Al
         content = get_content(topic)
         
         if not content:
             bot.edit_message_text("❌ İçerik üretilemedi. (Gemini reddetti veya hata oluştu)", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda seslendiriliyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda Callum seslendiriyor...", message.chat.id, msg.message_id)
 
-        # 2. Hook ve Script'i birleştir (Araya "..." koyarak nefes payı bırakıyoruz)
         full_audio_text = f"{content['hook']} ... {content['script']}"
         audio_filename = "final_voice.mp3"
 
-        # Eski kalıntıları temizle
         if os.path.exists(audio_filename): os.remove(audio_filename)
 
-        # 3. Sesi Üret ve Gönder
         if generate_elevenlabs_audio(full_audio_text, audio_filename):
             final_tags = f"{FIXED_HASHTAGS} {content['tags']}"
             caption_text = (
@@ -118,10 +113,9 @@ def handle(message):
                     audio, 
                     caption=caption_text, 
                     title=content['title'], 
-                    performer="SUI Horror"
+                    performer="SUI Horror - Callum"
                 )
             
-            # İşlem bitince bilgi mesajını sil ve temizlik yap
             bot.delete_message(message.chat.id, msg.message_id)
             os.remove(audio_filename)
             print("✅ Ses dosyası Telegram'a başarıyla gönderildi.", flush=True)
@@ -135,5 +129,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ ŞİMŞEK MODU (Sadece Ses) Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ ŞİMŞEK MODU (Callum) Aktif!", flush=True)
     bot.polling(non_stop=True)
