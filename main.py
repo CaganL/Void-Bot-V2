@@ -15,30 +15,39 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (VIRAL RETENTION MODU) ---
+# --- GEMINI: SENARYO OLUŞTURMA (SANSÜRSÜZ VIRAL MOD) ---
 def get_content(topic):
     models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-    safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}]
+    
+    # TÜM SANSÜR FİLTRELERİNİ KAPATIYORUZ (Korku hikayeleri engellenmesin diye)
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+    ]
 
-    # Prompt tamamen "Minimalist, Sert ve Twist" odaklı güncellendi
     base_prompt = (
-        f"You are experiencing a terrifying, mysterious encounter related to '{topic}'. "
-        "Strictly follow this format using '|||' as separator:\n"
-        "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS. Relatable and minimalist. e.g., 'I locked that door.', 'The bed creaked.') ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
+        f"Write a psychological horror short script about: '{topic}'. "
+        "Strictly follow this exact format using '|||' as separator:\n"
+        "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
         "RULES (VIRAL SHORTS MODE):\n"
-        "1. NO GORE, NO BLOOD, NO MEDICAL TERMS. (Never use: organs, ruptured, severed, spine, bleeding, fatal, death).\n"
-        "2. STYLE: Minimalist, sharp, relatable everyday horror. Use short, punchy sentences. NO poetic adjectives.\n"
-        "3. THE HOOK: Must be an immediate, everyday anomaly. Just raw facts (e.g., 'It was open. I locked it.').\n"
-        "4. THE ENDING: Must be an ABRUPT CLIFFHANGER or a SUDDEN TWIST. Active verbs only. (e.g., 'Then the breathing came from under the bed.', 'It didn't step out. It reached.').\n"
-        "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook."
+        "1. NO GORE, NO BLOOD. Build fear through paranoia, unnatural silence, and implied threats.\n"
+        "2. THE HOOK: Must be an immediate, everyday anomaly (e.g., 'It was open. I locked it.').\n"
+        "3. THE ENDING: Must be an ABRUPT CLIFFHANGER or a SUDDEN TWIST.\n"
+        "4. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook."
     )
     
     for current_model in models:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={GEMINI_API_KEY}"
             r = requests.post(url, json={"contents": [{"parts": [{"text": base_prompt}]}], "safetySettings": safety_settings}, timeout=20)
+            
             if r.status_code == 200:
-                parts = r.json()['candidates'][0]['content']['parts'][0]['text'].split("|||")
+                raw_text = r.json()['candidates'][0]['content']['parts'][0]['text']
+                parts = raw_text.split("|||")
+                
+                # Formatın tam 8 parça olup olmadığını kontrol et
                 if len(parts) >= 8:
                     return {
                         "title": parts[0].strip(),
@@ -46,7 +55,15 @@ def get_content(topic):
                         "script": parts[3].strip(),
                         "tags": parts[7].strip()
                     }
-        except: continue
+                else:
+                    print(f"⚠️ Format Hatası ({current_model}): Gemini eksik parça yolladı. Raw Text: {raw_text}", flush=True)
+            else:
+                print(f"❌ Gemini Sansür/API Hatası ({current_model}): {r.status_code} - {r.text}", flush=True)
+                
+        except Exception as e:
+            print(f"❌ İstek Hatası ({current_model}): {e}", flush=True)
+            continue
+            
     return None
 
 # --- SES MOTORU: ELEVENLABS ---
@@ -82,17 +99,16 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Viral Twist Modu)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Sansürsüz Twist Modu)...")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi. (Gemini reddetti veya hata oluştu)", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi. (Tüm modeller denendi ama sonuç alınamadı, konsola bakınız)", message.chat.id, msg.message_id)
             return
 
         bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda Callum seslendiriyor...", message.chat.id, msg.message_id)
 
-        # Nefes payı eklendi
         full_audio_text = f"{content['hook']} ... {content['script']}"
         audio_filename = "final_voice.mp3"
 
@@ -131,5 +147,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ VIRAL RETENTION Sürümü Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ SANSÜRSÜZ VİRAL SÜRÜM Aktif!", flush=True)
     bot.polling(non_stop=True)
