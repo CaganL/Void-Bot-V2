@@ -1,4 +1,3 @@
-
 import os
 import telebot
 import requests
@@ -17,16 +16,14 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (ZIRHLI MODEL LİSTESİ) ---
+# --- GEMINI: SENARYO OLUŞTURMA (API UYUMLU GÜNCEL MODELLER) ---
 def get_content(topic):
-    # Google'ın versiyon kodlu, asla 404 vermeyen kesin isimleri:
+    # Senin API anahtarının doğrudan desteklediği en güçlü ve hızlı modeller:
     models = [
+        "gemini-2.5-flash", 
         "gemini-2.0-flash", 
-        "gemini-1.5-flash-002", 
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b", 
-        "gemini-1.5-pro-002", 
-        "gemini-pro"
+        "gemini-2.5-pro",
+        "gemini-flash-latest"
     ]
     
     # TÜM SANSÜR FİLTRELERİNİ KAPATIYORUZ 
@@ -69,13 +66,11 @@ def get_content(topic):
                     print(f"⚠️ Format Hatası ({current_model}): Gemini eksik parça yolladı.", flush=True)
             
             elif r.status_code == 429:
-                # Çok fazla istek atarsak çökmek yerine 3 saniye bekleyip listedeki DİĞER modele geçecek
                 print(f"⏳ {current_model} Hız Sınırı (429)! Diğer modele geçmeden önce 3 saniye bekleniyor...", flush=True)
                 time.sleep(3) 
                 continue
                 
             else:
-                # 404 veya başka bir hata verirse loga yazıp diğerine geçer
                 print(f"❌ Gemini API Hatası ({current_model}): {r.status_code} - {r.text}", flush=True)
                 continue
                 
@@ -118,7 +113,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Zırhlı Model Sürümü)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (API Uyumlu Mod)...")
         
         content = get_content(topic)
         
@@ -166,5 +161,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ ZIRHLI MODEL SÜRÜMÜ Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ API UYUMLU SÜRÜM Aktif!", flush=True)
     bot.polling(non_stop=True)
