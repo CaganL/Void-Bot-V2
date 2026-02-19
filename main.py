@@ -8,8 +8,15 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 
-# Ses: Callum (Hırıltılı, Gergin, Psikolojik Gerilime Uygun)
-ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "N2lVS1w4EtoT3dr4eOWO") 
+# --- SES KÜTÜPHANESİ ---
+VOICES = {
+    "david": "kaGxVtjLwllv1bi2GFag",   # Soğuk, Raporlayıcı, Tech/AI Horror (TAVSİYE EDİLEN)
+    "richard": "eQIVHCAcQuAFeJps0K5l", # Ciddi, Kasvetli, Belgesel (Paranormal için)
+    "callum": "N2lVS1w4EtoT3dr4eOWO"   # Panik, Kurban (Eski sesimiz)
+}
+
+# Varsayılan sesi David olarak ayarladık
+ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"]) 
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
@@ -88,7 +95,16 @@ def generate_elevenlabs_audio(text, filename):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
     headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": ELEVENLABS_API_KEY}
     
-    data = {"text": text, "model_id": "eleven_turbo_v2_5", "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
+    # Eleştirmenin tavsiyesiyle ses ayarları dramatikleştirildi
+    data = {
+        "text": text, 
+        "model_id": "eleven_turbo_v2_5", 
+        "voice_settings": {
+            "stability": 0.45,         # Biraz daha öngörülemez ve dramatik
+            "similarity_boost": 0.85,  # David'in o soğuk/mekanik tonunu koruması için
+            "style": 0.15              # Vurguları daha keskin yapmak için
+        }
+    }
     
     try:
         r = requests.post(url, json=data, headers=headers, timeout=30)
@@ -111,7 +127,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Fiziksel Tehdit Modu)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (David Sesi & Tech Horror Modu)...")
         
         content = get_content(topic)
         
@@ -119,7 +135,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi. (Lütfen 1 dakika bekleyip tekrar deneyin, Google kısıtlaması).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda Callum seslendiriyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda David (Soğuk/Analitik) seslendiriyor...", message.chat.id, msg.message_id)
 
         full_audio_text = f"{content['hook']} ... {content['script']}"
         audio_filename = "final_voice.mp3"
@@ -143,7 +159,7 @@ def handle(message):
                     audio, 
                     caption=caption_text, 
                     title=content['title'], 
-                    performer="SUI Horror - Callum"
+                    performer="SUI Horror - David"
                 )
             
             bot.delete_message(message.chat.id, msg.message_id)
@@ -159,5 +175,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ FİZİKSEL TEHDİT (INSIDE) SÜRÜMÜ Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ DAVID (FORENSIC/TECH HORROR) SÜRÜMÜ Aktif!", flush=True)
     bot.polling(non_stop=True)
