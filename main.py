@@ -16,17 +16,15 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (API UYUMLU GÜNCEL MODELLER) ---
+# --- GEMINI: SENARYO OLUŞTURMA (KOTA DOSTU + POV & ETİKET DÜZELTMELİ VİRAL MOD) ---
 def get_content(topic):
-    # Senin API anahtarının doğrudan desteklediği en güçlü ve hızlı modeller:
+    # Senin listende olan ve ücretsiz kotası EN YÜKSEK (limit: 0 olmayan) modeller:
     models = [
-        "gemini-2.5-flash", 
-        "gemini-2.0-flash", 
-        "gemini-2.5-pro",
-        "gemini-flash-latest"
+        "gemini-flash-latest", # Yeni Ana Motorumuz (Kotaları çok geniştir)
+        "gemini-2.5-flash",    # Yedeğimiz
+        "gemini-exp-1206"      # Son çaremiz
     ]
     
-    # TÜM SANSÜR FİLTRELERİNİ KAPATIYORUZ 
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -37,12 +35,13 @@ def get_content(topic):
     base_prompt = (
         f"Write a psychological horror short script about: '{topic}'. "
         "Strictly follow this exact format using '|||' as separator:\n"
-        "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
+        "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (MAX 8 WORDS) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags. DO NOT use #horror, #shorts, #fyp)\n\n"
         "RULES (VIRAL SHORTS MODE):\n"
         "1. NO GORE, NO BLOOD. Build fear through paranoia, unnatural silence, and implied threats.\n"
         "2. THE HOOK: Must be an immediate, everyday anomaly (e.g., 'It was open. I locked it.').\n"
         "3. THE ENDING: Must be an ABRUPT CLIFFHANGER or a SUDDEN TWIST.\n"
-        "4. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook."
+        "4. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook.\n"
+        "5. POV RULE: Both the Title and the Narration Script MUST strictly be in the 1st person ('I', 'My'). Never use 'He/She/They'."
     )
     
     for current_model in models:
@@ -54,7 +53,6 @@ def get_content(topic):
                 raw_text = r.json()['candidates'][0]['content']['parts'][0]['text']
                 parts = raw_text.split("|||")
                 
-                # Formatın tam 8 parça olup olmadığını kontrol et
                 if len(parts) >= 8:
                     return {
                         "title": parts[0].strip(),
@@ -66,8 +64,8 @@ def get_content(topic):
                     print(f"⚠️ Format Hatası ({current_model}): Gemini eksik parça yolladı.", flush=True)
             
             elif r.status_code == 429:
-                print(f"⏳ {current_model} Hız Sınırı (429)! Diğer modele geçmeden önce 3 saniye bekleniyor...", flush=True)
-                time.sleep(3) 
+                print(f"⏳ {current_model} Kotası Doldu! Diğer modele geçiliyor...", flush=True)
+                time.sleep(2) 
                 continue
                 
             else:
@@ -113,12 +111,12 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (API Uyumlu Mod)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Kusursuz Viral Mod)...")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi. (Tüm yedek modeller denendi ama API sınırlarına takıldı, lütfen 1 dakika bekleyin.)", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi. (Lütfen 1 dakika bekleyip tekrar deneyin, Google kısıtlaması).", message.chat.id, msg.message_id)
             return
 
         bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda Callum seslendiriyor...", message.chat.id, msg.message_id)
@@ -161,5 +159,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ API UYUMLU SÜRÜM Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ KUSURSUZ VİRAL SÜRÜM Aktif!", flush=True)
     bot.polling(non_stop=True)
