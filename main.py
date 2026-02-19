@@ -12,7 +12,7 @@ ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 VOICES = {
     "david": "kaGxVtjLwllv1bi2GFag",   # Soğuk, Raporlayıcı, Tech/AI Horror (TAVSİYE EDİLEN)
     "richard": "eQIVHCAcQuAFeJps0K5l", # Ciddi, Kasvetli, Belgesel (Paranormal için)
-    "callum": "N2lVS1w4EtoT3dr4eOWO"   # Panik, Kurban (Eski sesimiz)
+    "callum": "N2lVS1w4EtoT3dr4eOWO"   # Panik, Kurban
 }
 
 # Varsayılan sesi David olarak ayarladık
@@ -47,7 +47,7 @@ def get_content(topic):
         "2. ZERO REPORTING (SHOW, DON'T TELL): DO NOT explain or narrate. Never use words like 'displayed', 'tried to', 'noticed', 'realized', or 'heard'. Use cold, harsh, fragmented sensory facts ONLY. (e.g., 'Screen black.', 'Button jammed.', 'Cold air.').\n"
         "3. THE HOOK: Ultra-short, maximum 6 words. Immediate anomaly. (e.g., 'Connected. Nothing else was.', 'I never recorded this.').\n"
         "4. THE CLIMAX (ACTIVE PHYSICAL INVASION): The anomaly MUST physically invade the narrator's personal space at the very last second. It must touch them, breathe on them, or be immediately behind them. End with a physical sensory shock. (e.g., 'The whisper wasn't in the speaker. It was right behind my neck.', 'A cold hand closed over mine.').\n"
-        "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook.\n"
+        "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. The Narration Script must contain totally new words starting right where the Hook left off.\n"
         "6. POV RULE: Both the Title and the Narration Script MUST strictly be in the 1st person ('I', 'My'). Never use 'He/She/They'."
     )
     
@@ -95,14 +95,13 @@ def generate_elevenlabs_audio(text, filename):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
     headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": ELEVENLABS_API_KEY}
     
-    # Eleştirmenin tavsiyesiyle ses ayarları dramatikleştirildi
     data = {
         "text": text, 
         "model_id": "eleven_turbo_v2_5", 
         "voice_settings": {
-            "stability": 0.45,         # Biraz daha öngörülemez ve dramatik
-            "similarity_boost": 0.85,  # David'in o soğuk/mekanik tonunu koruması için
-            "style": 0.15              # Vurguları daha keskin yapmak için
+            "stability": 0.45,         
+            "similarity_boost": 0.85,  
+            "style": 0.15              
         }
     }
     
@@ -127,17 +126,29 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (David Sesi & Tech Horror Modu)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Makaslı Mod)...")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi. (Lütfen 1 dakika bekleyip tekrar deneyin, Google kısıtlaması).", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi. (Lütfen 1 dakika bekleyip tekrar deneyin).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda David (Soğuk/Analitik) seslendiriyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda David seslendiriyor...", message.chat.id, msg.message_id)
 
-        full_audio_text = f"{content['hook']} ... {content['script']}"
+        # --- YAZILIMSAL MAKAS (TEKRAR ÖNLEYİCİ) ---
+        hook_text = content['hook']
+        script_text = content['script']
+        
+        # Eğer Hikaye (Script), Hook ile aynı cümleyle başlıyorsa o kısmı zorla kesip atıyoruz.
+        if script_text.lower().startswith(hook_text.lower()):
+            script_text = script_text[len(hook_text):].strip()
+            # Başta kalan nokta, virgül veya gereksiz boşlukları da temizliyoruz
+            script_text = script_text.lstrip(".,?! -")
+            
+        # Temizlenmiş ve kusursuz metni birleştir
+        full_audio_text = f"{hook_text} ... {script_text}"
+        
         audio_filename = "final_voice.mp3"
 
         if os.path.exists(audio_filename): os.remove(audio_filename)
@@ -145,9 +156,9 @@ def handle(message):
         if generate_elevenlabs_audio(full_audio_text, audio_filename):
             final_tags = f"{FIXED_HASHTAGS} {content['tags']}"
             caption_text = (
-                f"🪝 **HOOK:**\n{content['hook']}\n\n"
+                f"🪝 **HOOK:**\n{hook_text}\n\n"
                 f"🎬 **BAŞLIK:**\n{content['title']}\n\n"
-                f"📝 **HİKAYE:**\n{content['script']}\n\n"
+                f"📝 **HİKAYE:**\n{script_text}\n\n"
                 f"#️⃣ **ETİKETLER:**\n{final_tags}"
             )
             
@@ -175,5 +186,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ DAVID (FORENSIC/TECH HORROR) SÜRÜMÜ Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ TEKRAR ÖNLEYİCİ SÜRÜM Aktif!", flush=True)
     bot.polling(non_stop=True)
