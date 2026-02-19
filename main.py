@@ -137,7 +137,6 @@ def generate_resources(content):
     script = content["script"]
     visual_queries = content["visual_queries"]
     
-    # 1. Ses Üretimi
     if not generate_elevenlabs_audio(hook, "hook.mp3"): return None
     if not generate_elevenlabs_audio(script, "script.mp3"): return None
 
@@ -146,14 +145,12 @@ def generate_resources(content):
         h_audio = AudioFileClip("hook.mp3")
         s_audio = AudioFileClip("script.mp3")
         
-        # SESSİZLİK (AudioClip) KISMI KALDIRILDI - DOĞRUDAN BİRLEŞTİRME
         final_audio = concatenate_audioclips([h_audio, s_audio])
         final_audio.write_audiofile("voice.mp3", logger=None)
         
         h_audio.close()
         s_audio.close()
         
-        # Geçici ses dosyalarını temizle
         if os.path.exists("hook.mp3"): os.remove("hook.mp3")
         if os.path.exists("script.mp3"): os.remove("script.mp3")
         print("✅ Ses montajı tamam.", flush=True)
@@ -161,7 +158,6 @@ def generate_resources(content):
         print(f"❌ Ses birleştirme hatası: {e}", flush=True)
         return None
 
-    # 2. Video İndirme
     print("🎬 Videolar indiriliyor...", flush=True)
     paths = []
     used = set()
@@ -193,7 +189,7 @@ def generate_resources(content):
     print(f"✅ Toplam {len(paths)} video indirildi.", flush=True)
     return paths, final_audio
 
-# --- EFEKTLER ---
+# --- EFEKTLER (Hafifletildi) ---
 def clinical_grade(image):
     img_f = image.astype(float)
     gray = np.mean(img_f, axis=2, keepdims=True)
@@ -213,13 +209,12 @@ def apply_processing(clip, duration, is_impact=False):
         start = random.uniform(0, clip.duration - duration)
         clip = clip.subclip(start, start + duration)
     
+    # Boyutları eşitle. (RAM canavarı zoom efekti kaldırıldı)
     if clip.w/clip.h > W/H:
         clip = clip.resize(height=H).crop(x1=clip.w/2-W/2, width=W, height=H)
     else:
         clip = clip.resize(width=W).crop(y1=clip.h/2-H/2, width=W, height=H)
 
-    clip = clip.resize(lambda t: 1 + 0.04 * t).set_position(('center', 'center'))
-    
     if is_impact: clip = xray_effect(clip)
     else: clip = clip.fl_image(clinical_grade)
     return clip
@@ -239,22 +234,30 @@ def build_video(content):
                 dur = random.uniform(2.5, 3.5)
                 is_impact = (i >= len(paths) - 1)
                 clips.append(apply_processing(c, dur, is_impact))
-            except: continue
+            except Exception as e:
+                print(f"❌ Klip işleme hatası: {e}", flush=True)
+                continue
 
-        while sum(c.duration for c in clips) < audio.duration:
-             if clips: 
-                new_c = clips[0].copy().fx(vfx.blackwhite).fx(vfx.speedx, 0.6)
-                clips.append(new_c)
-             else: break
+        # RAM yoran sonsuz kopyalama döngüsü yerine temiz loop
+        total_video_dur = sum(c.duration for c in clips)
+        if clips and total_video_dur < audio.duration:
+            missing_dur = audio.duration - total_video_dur
+            last_clip = clips[-1]
+            extended_last = vfx.loop(last_clip, duration=last_clip.duration + missing_dur)
+            clips[-1] = extended_last
 
+        print("⚙️ Klipler birleştiriliyor...", flush=True)
         final = concatenate_videoclips(clips, method="compose").set_audio(audio)
         final = final.subclip(0, audio.duration)
         
         out = "final_output.mp4"
-        final.write_videofile(out, fps=24, codec="libx264", preset="ultrafast", bitrate="3000k", audio_bitrate="128k", threads=1, logger=None)
+        print("💾 Dosyaya yazılıyor (Bu biraz sürebilir)...", flush=True)
+        # RAM dostu olması için bitrate biraz düşürüldü, threads 1'de sabitlendi.
+        final.write_videofile(out, fps=24, codec="libx264", preset="ultrafast", bitrate="2000k", audio_bitrate="128k", threads=1, logger=None)
         
         audio.close()
         for c in clips: c.close()
+        final.close() # İşlem bitince hemen RAM'i boşalt
         for p in paths: 
             if os.path.exists(p): os.remove(p)
             
@@ -310,5 +313,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... Saf ElevenLabs sürümü aktif.", flush=True)
+    print("Bot başlatılıyor... Saf ElevenLabs ve RAM-Dostu sürüm aktif.", flush=True)
     bot.polling(non_stop=True)
