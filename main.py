@@ -16,13 +16,12 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (MASTERCLASS VİRAL MOD + KOTA DOSTU) ---
+# --- GEMINI: SENARYO OLUŞTURMA (AKTİF TEHDİT & SIFIR AÇIKLAMA MODU) ---
 def get_content(topic):
-    # Senin listende olan ve ücretsiz kotası EN YÜKSEK (limit: 0 olmayan) modeller:
     models = [
-        "gemini-flash-latest", # Yeni Ana Motorumuz (Kotaları çok geniştir)
-        "gemini-2.5-flash",    # Yedeğimiz
-        "gemini-exp-1206"      # Son çaremiz
+        "gemini-flash-latest", 
+        "gemini-2.5-flash",    
+        "gemini-exp-1206"      
     ]
     
     safety_settings = [
@@ -35,12 +34,12 @@ def get_content(topic):
     base_prompt = (
         f"Write a psychological horror short script about: '{topic}'. "
         "Strictly follow this exact format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (MAX 8 WORDS) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags. DO NOT use #horror, #shorts, #fyp)\n\n"
-        "RULES (VIRAL SHORTS MODE - MASTERCLASS):\n"
+        "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (MAX 6 WORDS) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags. DO NOT use #horror, #shorts, #fyp)\n\n"
+        "RULES (VIRAL SHORTS MODE - ACTIVE THREAT):\n"
         "1. NO GORE, NO BLOOD. Build fear through paranoia, unnatural silence, and everyday technology.\n"
-        "2. STRICTLY MINIMALIST: NO conversational filler words (Never use 'you know', 'well', 'like', 'um'). Use sharp, punchy, direct sentences.\n"
-        "3. THE HOOK: Must be an immediate, everyday anomaly (e.g., 'It was smiling. I wasn't.').\n"
-        "4. THE ENDING: Must be a mind-bending paradox or a reality-breaking twist. (e.g., 'It smiled before I did.', 'The reflection blinked first.', 'The text was sent from my own phone.').\n"
+        "2. SHOW, DON'T TELL (NO EXPOSITION): NEVER write 'I checked', 'I realized', or 'It began quietly'. Write active, experiential facts only (e.g., 'The log was empty.', 'It was breathing.'). Use sharp, punchy sentences.\n"
+        "3. THE HOOK: Ultra-short, maximum 6 words. Immediate realization of an anomaly (e.g., 'I never recorded this.', 'It wasn't my reflection.').\n"
+        "4. THE ENDING (ACTIVE THREAT): The anomaly MUST enter the physical space of the narrator at the very last second. It must feel dangerous, not just weird. (e.g., 'The voice note ended. Then I heard the same breathing from my closet.', 'It smiled before I did. Then it tapped on my side of the glass.').\n"
         "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook.\n"
         "6. POV RULE: Both the Title and the Narration Script MUST strictly be in the 1st person ('I', 'My'). Never use 'He/She/They'."
     )
@@ -112,7 +111,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Masterclass Viral Mod)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Aktif Tehdit Modu)...")
         
         content = get_content(topic)
         
@@ -160,5 +159,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ MASTERCLASS VİRAL SÜRÜM Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ AKTİF TEHDİT SÜRÜMÜ Aktif!", flush=True)
     bot.polling(non_stop=True)
