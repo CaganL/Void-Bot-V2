@@ -49,8 +49,7 @@ def get_content(topic):
         "RULES (PRO MODE):\n"
         "1. NO STORYTELLING. No 'ran away', no 'screamed'.\n"
         "2. ENDING: Immediate system failure (e.g. 'Spine severed').\n"
-        "3. VISUALS: Suggest 'Cracking ice', 'Red ink' for impact scenes.\n"
-        "4. STYLE: Cold, Clinical."
+        "3. STYLE: Cold, Clinical."
     )
     
     for current_model in models:
@@ -131,7 +130,7 @@ def generate_elevenlabs_audio(text, filename):
         print(f"❌ ElevenLabs Bağlantı Hatası: {e}", flush=True)
         return False
 
-# --- KAYNAK OLUŞTURMA (Senkron) ---
+# --- KAYNAK OLUŞTURMA ---
 def generate_resources(content):
     hook = content["hook"]
     script = content["script"]
@@ -189,34 +188,22 @@ def generate_resources(content):
     print(f"✅ Toplam {len(paths)} video indirildi.", flush=True)
     return paths, final_audio
 
-# --- EFEKTLER (Hafifletildi) ---
-def clinical_grade(image):
-    img_f = image.astype(float)
-    gray = np.mean(img_f, axis=2, keepdims=True)
-    desaturated = img_f * 0.4 + gray * 0.6 
-    tint_matrix = np.array([0.8, 1.1, 1.2]) 
-    graded_img = desaturated * tint_matrix
-    graded_img = (graded_img - 128) * 1.2 + 128
-    return np.clip(graded_img, 0, 255).astype(np.uint8)
-
-def xray_effect(clip):
-    return clip.fx(vfx.invert_colors)
-
-def apply_processing(clip, duration, is_impact=False):
+# --- KESME VE BOYUTLANDIRMA (Efektsiz) ---
+def apply_processing(clip, duration):
+    # Eğer video süresi kısa ise uzat, uzun ise rastgele bir yerinden kes
     if clip.duration < duration:
         clip = vfx.loop(clip, duration=duration)
     else:
         start = random.uniform(0, clip.duration - duration)
         clip = clip.subclip(start, start + duration)
     
-    # Boyutları eşitle. (RAM canavarı zoom efekti kaldırıldı)
+    # 720x1280 (WxH) formatına tam oturtmak için kırpma
     if clip.w/clip.h > W/H:
         clip = clip.resize(height=H).crop(x1=clip.w/2-W/2, width=W, height=H)
     else:
         clip = clip.resize(width=W).crop(y1=clip.h/2-H/2, width=W, height=H)
 
-    if is_impact: clip = xray_effect(clip)
-    else: clip = clip.fl_image(clinical_grade)
+    # Hiçbir renk filtresi yok, ham görüntüyü döndür
     return clip
 
 # --- MONTAJ ---
@@ -228,17 +215,16 @@ def build_video(content):
             
         print("🎞️ Video montajı (render) başlıyor...", flush=True)
         clips = []
-        for i, p in enumerate(paths):
+        for p in paths:
             try:
                 c = VideoFileClip(p).without_audio()
                 dur = random.uniform(2.5, 3.5)
-                is_impact = (i >= len(paths) - 1)
-                clips.append(apply_processing(c, dur, is_impact))
+                clips.append(apply_processing(c, dur))
             except Exception as e:
                 print(f"❌ Klip işleme hatası: {e}", flush=True)
                 continue
 
-        # RAM yoran sonsuz kopyalama döngüsü yerine temiz loop
+        # Sesin süresini tam doldurmak için son klibi uzat (RAM dostu yöntem)
         total_video_dur = sum(c.duration for c in clips)
         if clips and total_video_dur < audio.duration:
             missing_dur = audio.duration - total_video_dur
@@ -251,13 +237,14 @@ def build_video(content):
         final = final.subclip(0, audio.duration)
         
         out = "final_output.mp4"
-        print("💾 Dosyaya yazılıyor (Bu biraz sürebilir)...", flush=True)
-        # RAM dostu olması için bitrate biraz düşürüldü, threads 1'de sabitlendi.
+        print("💾 Dosyaya yazılıyor (Efektsiz, Hızlı Render)...", flush=True)
+        
+        # Bitrate 2000k olarak korundu
         final.write_videofile(out, fps=24, codec="libx264", preset="ultrafast", bitrate="2000k", audio_bitrate="128k", threads=1, logger=None)
         
         audio.close()
         for c in clips: c.close()
-        final.close() # İşlem bitince hemen RAM'i boşalt
+        final.close() 
         for p in paths: 
             if os.path.exists(p): os.remove(p)
             
@@ -275,12 +262,12 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP GELDİ: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nElevenLabs Pro Modu Devrede...\n")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nElevenLabs HD Modu Devrede...\n")
         
         content = get_content(topic)
         
         if not content:
-            bot.edit_message_text("❌ İçerik üretilemedi. (Gemini API yanıt vermedi veya sansüre takıldı)", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             print("❌ Gemini içerik üretemedi.", flush=True)
             return
 
@@ -306,12 +293,12 @@ def handle(message):
             print("✅ Video başarıyla Telegram'a gönderildi.", flush=True)
         else:
             bot.edit_message_text("❌ Render hatası. Videoyu oluştururken bir sorun yaşandı.", message.chat.id, msg.message_id)
-            print("❌ Süreç tamamlanamadı, video dosyası bulunamadı.", flush=True)
+            print("❌ Süreç tamamlanamadı.", flush=True)
             
     except Exception as e:
         bot.reply_to(message, f"Bot Hatası: {e}")
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... Saf ElevenLabs ve RAM-Dostu sürüm aktif.", flush=True)
+    print("Bot başlatılıyor... Efektsiz HD Sürüm aktif.", flush=True)
     bot.polling(non_stop=True)
