@@ -5,9 +5,9 @@ import requests
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
-# Varsayılan Ses Değiştirildi: Callum (Hırıltılı, Gergin Kurban Sesi)
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
+
+# Ses: Callum (Hırıltılı, Gergin, Psikolojik Gerilime Uygun)
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "N2lVS1w4EtoT3dr4eOWO") 
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
@@ -15,20 +15,20 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA ---
+# --- GEMINI: SENARYO OLUŞTURMA (YOUTUBE PARA KAZANMA DOSTU) ---
 def get_content(topic):
+    # En hızlı modelleri seçtik
     models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}]
 
-    # Süreyi 28-32 saniye bandına çekmek için kelime sayısı (55-65) olarak güncellendi.
     base_prompt = (
-        f"You are a VICTIM describing a FATAL physical trauma in a '{topic}'. "
+        f"You are experiencing a terrifying, mysterious encounter related to '{topic}'. "
         "Strictly follow this format using '|||' as separator:\n"
         "CLICKBAIT TITLE ||| PUNCHY HOOK (MAX 8 WORDS, Sensory POV) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_SEARCH_VARIANTS ||| #tags\n\n"
-        "RULES (PRO MODE):\n"
-        "1. NO STORYTELLING. No 'ran away', no 'screamed'.\n"
-        "2. ENDING: Immediate system failure (e.g. 'Spine severed').\n"
-        "3. STYLE: Cold, Clinical.\n"
+        "RULES (YOUTUBE SAFE & VIRAL):\n"
+        "1. NO GORE, NO BLOOD, NO MEDICAL TERMS. (Never use words like: organs, ruptured, severed, spine, bleeding, fatal, death).\n"
+        "2. PSYCHOLOGICAL DREAD: Build fear through senses. Unnatural silence, heavy pressure, freezing temperatures, moving shadows, a feeling of being watched.\n"
+        "3. IMPLIED ENDING: End with an eerie realization, sudden darkness, or a chilling final thought instead of physical death (e.g., 'My body stopped responding as the lights went out.', 'The whispering stopped, but I wasn't alone.').\n"
         "4. STRICT RULE: DO NOT repeat the Hook in the Narration Script. The script must continue directly from where the hook left off."
     )
     
@@ -81,7 +81,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Callum Sesi Aktif)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Psikolojik Gerilim + Callum)...")
         
         content = get_content(topic)
         
@@ -91,6 +91,7 @@ def handle(message):
 
         bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda Callum seslendiriyor...", message.chat.id, msg.message_id)
 
+        # Nefes payı eklendi
         full_audio_text = f"{content['hook']} ... {content['script']}"
         audio_filename = "final_voice.mp3"
 
@@ -129,5 +130,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ ŞİMŞEK MODU (Callum) Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ YOUTUBE DOSTU (Callum) Sürümü Aktif!", flush=True)
     bot.polling(non_stop=True)
