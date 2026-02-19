@@ -16,7 +16,7 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (KOTA DOSTU + POV & ETİKET DÜZELTMELİ VİRAL MOD) ---
+# --- GEMINI: SENARYO OLUŞTURMA (MASTERCLASS VİRAL MOD + KOTA DOSTU) ---
 def get_content(topic):
     # Senin listende olan ve ücretsiz kotası EN YÜKSEK (limit: 0 olmayan) modeller:
     models = [
@@ -36,12 +36,13 @@ def get_content(topic):
         f"Write a psychological horror short script about: '{topic}'. "
         "Strictly follow this exact format using '|||' as separator:\n"
         "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (MAX 8 WORDS) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags. DO NOT use #horror, #shorts, #fyp)\n\n"
-        "RULES (VIRAL SHORTS MODE):\n"
-        "1. NO GORE, NO BLOOD. Build fear through paranoia, unnatural silence, and implied threats.\n"
-        "2. THE HOOK: Must be an immediate, everyday anomaly (e.g., 'It was open. I locked it.').\n"
-        "3. THE ENDING: Must be an ABRUPT CLIFFHANGER or a SUDDEN TWIST.\n"
-        "4. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook.\n"
-        "5. POV RULE: Both the Title and the Narration Script MUST strictly be in the 1st person ('I', 'My'). Never use 'He/She/They'."
+        "RULES (VIRAL SHORTS MODE - MASTERCLASS):\n"
+        "1. NO GORE, NO BLOOD. Build fear through paranoia, unnatural silence, and everyday technology.\n"
+        "2. STRICTLY MINIMALIST: NO conversational filler words (Never use 'you know', 'well', 'like', 'um'). Use sharp, punchy, direct sentences.\n"
+        "3. THE HOOK: Must be an immediate, everyday anomaly (e.g., 'It was smiling. I wasn't.').\n"
+        "4. THE ENDING: Must be a mind-bending paradox or a reality-breaking twist. (e.g., 'It smiled before I did.', 'The reflection blinked first.', 'The text was sent from my own phone.').\n"
+        "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Continue directly from the hook.\n"
+        "6. POV RULE: Both the Title and the Narration Script MUST strictly be in the 1st person ('I', 'My'). Never use 'He/She/They'."
     )
     
     for current_model in models:
@@ -111,7 +112,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Kusursuz Viral Mod)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Masterclass Viral Mod)...")
         
         content = get_content(topic)
         
@@ -159,5 +160,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ KUSURSUZ VİRAL SÜRÜM Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ MASTERCLASS VİRAL SÜRÜM Aktif!", flush=True)
     bot.polling(non_stop=True)
