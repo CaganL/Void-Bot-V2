@@ -5,7 +5,7 @@ import random
 import time
 import numpy as np
 from moviepy.editor import (
-    VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips, AudioClip
+    VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, concatenate_audioclips
 )
 
 # BS4 Koruması (Mixkit için)
@@ -107,11 +107,13 @@ def smart_scene_search(query):
     if not link: link = search_mixkit(query) 
     return link
 
-# --- SES MOTORU: ELEVENLABS (Sadece) ---
+# --- SES MOTORU: ELEVENLABS ---
 def generate_elevenlabs_audio(text, filename):
     if not ELEVENLABS_API_KEY: 
-        print("❌ ElevenLabs API Anahtarı eksik!")
+        print("❌ ElevenLabs API Anahtarı eksik!", flush=True)
         return False
+        
+    print(f"🎙️ ElevenLabs'ten ses isteniyor: {filename}...", flush=True)
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
     headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": ELEVENLABS_API_KEY}
     data = {"text": text, "model_id": "eleven_turbo_v2_5", "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
@@ -120,12 +122,13 @@ def generate_elevenlabs_audio(text, filename):
         r = requests.post(url, json=data, headers=headers, timeout=30)
         if r.status_code == 200:
             with open(filename, 'wb') as f: f.write(r.content)
+            print(f"✅ Başarılı: {filename} oluşturuldu.", flush=True)
             return True
         else:
-            print(f"❌ ElevenLabs Hatası: {r.status_code} - {r.text}")
+            print(f"❌ ElevenLabs Hatası: {r.status_code} - {r.text}", flush=True)
             return False
     except Exception as e: 
-        print(f"❌ ElevenLabs Bağlantı Hatası: {e}")
+        print(f"❌ ElevenLabs Bağlantı Hatası: {e}", flush=True)
         return False
 
 # --- KAYNAK OLUŞTURMA (Senkron) ---
@@ -139,14 +142,12 @@ def generate_resources(content):
     if not generate_elevenlabs_audio(script, "script.mp3"): return None
 
     try:
+        print("🎧 Sesler birleştiriliyor...", flush=True)
         h_audio = AudioFileClip("hook.mp3")
         s_audio = AudioFileClip("script.mp3")
         
-        # Güvenli Sessizlik Ekleme
-        silence_duration = 0.6
-        silence = AudioClip(lambda t: 0, duration=silence_duration, fps=44100) 
-        
-        final_audio = concatenate_audioclips([h_audio, silence, s_audio])
+        # SESSİZLİK (AudioClip) KISMI KALDIRILDI - DOĞRUDAN BİRLEŞTİRME
+        final_audio = concatenate_audioclips([h_audio, s_audio])
         final_audio.write_audiofile("voice.mp3", logger=None)
         
         h_audio.close()
@@ -155,11 +156,13 @@ def generate_resources(content):
         # Geçici ses dosyalarını temizle
         if os.path.exists("hook.mp3"): os.remove("hook.mp3")
         if os.path.exists("script.mp3"): os.remove("script.mp3")
+        print("✅ Ses montajı tamam.", flush=True)
     except Exception as e:
-        print(f"Ses birleştirme hatası: {e}")
+        print(f"❌ Ses birleştirme hatası: {e}", flush=True)
         return None
 
     # 2. Video İndirme
+    print("🎬 Videolar indiriliyor...", flush=True)
     paths = []
     used = set()
     curr_dur = 0
@@ -183,7 +186,11 @@ def generate_resources(content):
                         c.close()
             except: pass
     
-    if not paths: return None
+    if not paths: 
+        print("❌ Hiç video indirilemedi!", flush=True)
+        return None
+        
+    print(f"✅ Toplam {len(paths)} video indirildi.", flush=True)
     return paths, final_audio
 
 # --- EFEKTLER ---
@@ -220,10 +227,11 @@ def apply_processing(clip, duration, is_impact=False):
 # --- MONTAJ ---
 def build_video(content):
     try:
-        res = generate_resources(content)  # asyncio.run kaldırıldı
+        res = generate_resources(content) 
         if not res: return None
         paths, audio = res
             
+        print("🎞️ Video montajı (render) başlıyor...", flush=True)
         clips = []
         for i, p in enumerate(paths):
             try:
@@ -249,9 +257,11 @@ def build_video(content):
         for c in clips: c.close()
         for p in paths: 
             if os.path.exists(p): os.remove(p)
+            
+        print("✅ Render başarıyla tamamlandı!", flush=True)
         return out
     except Exception as e:
-        print(f"Montaj Hatası: {e}")
+        print(f"❌ Montaj Hatası: {e}", flush=True)
         return None
 
 # --- TELEGRAM BOT KOMUTLARI ---
@@ -261,12 +271,14 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
+        print(f"\n--- YENİ TALEP GELDİ: {topic} ---", flush=True)
         msg = bot.reply_to(message, f"💀 **{topic.upper()}**\nElevenLabs Pro Modu Devrede...\n")
         
         content = get_content(topic)
         
         if not content:
             bot.edit_message_text("❌ İçerik üretilemedi. (Gemini API yanıt vermedi veya sansüre takıldı)", message.chat.id, msg.message_id)
+            print("❌ Gemini içerik üretemedi.", flush=True)
             return
 
         bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Ses: ElevenLabs\n📍 Mekan: {content['location'].upper()}\n⏳ Render İşlemi Başladı...", message.chat.id, msg.message_id)
@@ -286,15 +298,17 @@ def handle(message):
             with open(path, "rb") as v:
                 bot.send_video(message.chat.id, v, caption=caption_text, timeout=600)
                 
-            # Gönderim başarılı olunca kalıntıları temizle
             os.remove(path)
             if os.path.exists("voice.mp3"): os.remove("voice.mp3")
+            print("✅ Video başarıyla Telegram'a gönderildi.", flush=True)
         else:
             bot.edit_message_text("❌ Render hatası. Videoyu oluştururken bir sorun yaşandı.", message.chat.id, msg.message_id)
+            print("❌ Süreç tamamlanamadı, video dosyası bulunamadı.", flush=True)
             
     except Exception as e:
         bot.reply_to(message, f"Bot Hatası: {e}")
+        print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... Saf ElevenLabs sürümü aktif.")
+    print("Bot başlatılıyor... Saf ElevenLabs sürümü aktif.", flush=True)
     bot.polling(non_stop=True)
