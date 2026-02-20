@@ -23,7 +23,7 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (FAZ 2: ZİHİN KIRAN PARALEL GERÇEKLİK) ---
+# --- GEMINI: SENARYO OLUŞTURMA (FAZ 3: PARALEL ŞOK) ---
 def get_content(topic):
     models = [
         "gemini-flash-latest", 
@@ -41,14 +41,18 @@ def get_content(topic):
     base_prompt = (
         f"Write a psychological horror short script about: '{topic}'. "
         "Strictly follow this exact format using '|||' as separator:\n"
-        "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (MAX 6 WORDS) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags. DO NOT use #horror, #shorts, #fyp)\n\n"
-        "RULES (VIRAL SHORTS MODE - PHASE 2: MIND-BENDING + INSIDE):\n"
-        "1. NO GORE, NO BLOOD. Build fear through paranoia, unnatural silence, and everyday technology.\n"
-        "2. ZERO REPORTING (SHOW, DON'T TELL): DO NOT explain or narrate. Use cold, harsh, fragmented sensory facts ONLY. (e.g., 'Screen black.', 'Button jammed.', 'Cold air.').\n"
-        "3. THE HOOK: Ultra-short, maximum 6 words. Immediate anomaly. (e.g., 'Connected. Nothing else was.', 'I never recorded this.').\n"
-        "4. THE CLIMAX (PARADOX + PHYSICAL THREAT): DO NOT end with a generic 'something touched me'. Combine a technology/reality paradox with an immediate physical invasion. Create visual parallelism. (e.g., 'On screen, my reflection leaned into the lens. In the dark room, I felt breath on my actual ear.', 'The text said 'Look up'. The typing sound came from the ceiling.'). Break their mind at the last second.\n"
-        "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. The Narration Script must contain totally new words starting right where the Hook left off.\n"
-        "6. POV RULE: Both the Title and the Narration Script MUST strictly be in the 1st person ('I', 'My'). Never use 'He/She/They'."
+        "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (STRICTLY 2 TO 6 WORDS MAX) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags. DO NOT use #horror, #shorts, #fyp)\n\n"
+        "RULES (VIRAL SHORTS MODE - PHASE 3: THE PARALLEL SHOCK):\n"
+        "1. NO GORE, NO BLOOD. Build fear through paranoia and everyday technology.\n"
+        "2. ZERO REPORTING (SHOW, DON'T TELL): DO NOT explain or narrate. Use cold, fragmented sensory facts ONLY. Never use words like 'felt', 'silence', 'atmosphere', or 'realized'.\n"
+        "3. THE HOOK: STRICTLY MAXIMUM 6 WORDS. Immediate anomaly. (e.g., 'Photo received. It was me.').\n"
+        "4. THE CLIMAX (THE 3-STEP VIRAL SHOCK): You MUST end using this exact sequence:\n"
+        "   - Step 1 (Parallel Change): The digital anomaly updates/moves on its own (e.g., 'The image refreshed.', 'The reflection smiled.').\n"
+        "   - Step 2 (The Breach): The anomaly reacts to something IN THE ROOM with the narrator (e.g., 'My photo-self looked behind me.').\n"
+        "   - Step 3 (Physical Contact): Immediate, aggressive physical contact on the narrator's real body (e.g., 'A cold hand grabbed my shoulder.', 'Teeth scraped my actual ear.').\n"
+        "   NEVER end with atmosphere, silence, or thoughts.\n"
+        "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Start the script with totally new words.\n"
+        "6. POV RULE: 1st person ('I', 'My') ONLY."
     )
     
     for current_model in models:
@@ -126,7 +130,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (FAZ 2: Zihin Kıran Final)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (FAZ 3: Paralel Şok)...")
         
         content = get_content(topic)
         
@@ -179,9 +183,8 @@ def handle(message):
             print("❌ Süreç tamamlanamadı.", flush=True)
             
     except Exception as e:
-        bot.reply_to(message, f"Kritik Hata: {e}")
-        print(f"❌ Kritik Bot Hatası: {e}", flush=True)
+        bot.reply_to(message, f"Kritik Hata: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ FAZ 2 SÜRÜMÜ Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ FAZ 3 SÜRÜMÜ Aktif!", flush=True)
     bot.polling(non_stop=True)
