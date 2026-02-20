@@ -11,8 +11,8 @@ ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 # --- SES KÜTÜPHANESİ ---
 VOICES = {
     "david": "kaGxVtjLwllv1bi2GFag",   # Soğuk, Raporlayıcı, Tech/AI Horror (TAVSİYE EDİLEN)
-    "richard": "eQIVHCAcQuAFeJps0K5l", # Ciddi, Kasvetli, Belgesel (Paranormal için)
-    "callum": "N2lVS1w4EtoT3dr4eOWO"   # Panik, Kurban
+    "richard": "eQIVHCAcQuAFeJps0K5l", # Ciddi, Kasvetli, Belgesel 
+    "callum": "N2lVS1w4EtoT3dr4eOWO"   # Panik, Kurban 
 }
 
 # Varsayılan sesi David olarak ayarladık
@@ -23,7 +23,7 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (GARİP -> YAKIN -> İÇERİDE MODU) ---
+# --- GEMINI: SENARYO OLUŞTURMA (FAZ 2: ZİHİN KIRAN PARALEL GERÇEKLİK) ---
 def get_content(topic):
     models = [
         "gemini-flash-latest", 
@@ -42,11 +42,11 @@ def get_content(topic):
         f"Write a psychological horror short script about: '{topic}'. "
         "Strictly follow this exact format using '|||' as separator:\n"
         "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (MAX 6 WORDS) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags. DO NOT use #horror, #shorts, #fyp)\n\n"
-        "RULES (VIRAL SHORTS MODE - WEIRD -> CLOSE -> INSIDE):\n"
+        "RULES (VIRAL SHORTS MODE - PHASE 2: MIND-BENDING + INSIDE):\n"
         "1. NO GORE, NO BLOOD. Build fear through paranoia, unnatural silence, and everyday technology.\n"
-        "2. ZERO REPORTING (SHOW, DON'T TELL): DO NOT explain or narrate. Never use words like 'displayed', 'tried to', 'noticed', 'realized', or 'heard'. Use cold, harsh, fragmented sensory facts ONLY. (e.g., 'Screen black.', 'Button jammed.', 'Cold air.').\n"
+        "2. ZERO REPORTING (SHOW, DON'T TELL): DO NOT explain or narrate. Use cold, harsh, fragmented sensory facts ONLY. (e.g., 'Screen black.', 'Button jammed.', 'Cold air.').\n"
         "3. THE HOOK: Ultra-short, maximum 6 words. Immediate anomaly. (e.g., 'Connected. Nothing else was.', 'I never recorded this.').\n"
-        "4. THE CLIMAX (ACTIVE PHYSICAL INVASION): The anomaly MUST physically invade the narrator's personal space at the very last second. It must touch them, breathe on them, or be immediately behind them. End with a physical sensory shock. (e.g., 'The whisper wasn't in the speaker. It was right behind my neck.', 'A cold hand closed over mine.').\n"
+        "4. THE CLIMAX (PARADOX + PHYSICAL THREAT): DO NOT end with a generic 'something touched me'. Combine a technology/reality paradox with an immediate physical invasion. Create visual parallelism. (e.g., 'On screen, my reflection leaned into the lens. In the dark room, I felt breath on my actual ear.', 'The text said 'Look up'. The typing sound came from the ceiling.'). Break their mind at the last second.\n"
         "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. The Narration Script must contain totally new words starting right where the Hook left off.\n"
         "6. POV RULE: Both the Title and the Narration Script MUST strictly be in the 1st person ('I', 'My'). Never use 'He/She/They'."
     )
@@ -126,7 +126,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (Makaslı Mod)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (FAZ 2: Zihin Kıran Final)...")
         
         content = get_content(topic)
         
@@ -140,13 +140,10 @@ def handle(message):
         hook_text = content['hook']
         script_text = content['script']
         
-        # Eğer Hikaye (Script), Hook ile aynı cümleyle başlıyorsa o kısmı zorla kesip atıyoruz.
         if script_text.lower().startswith(hook_text.lower()):
             script_text = script_text[len(hook_text):].strip()
-            # Başta kalan nokta, virgül veya gereksiz boşlukları da temizliyoruz
             script_text = script_text.lstrip(".,?! -")
             
-        # Temizlenmiş ve kusursuz metni birleştir
         full_audio_text = f"{hook_text} ... {script_text}"
         
         audio_filename = "final_voice.mp3"
@@ -186,5 +183,5 @@ def handle(message):
         print(f"❌ Kritik Bot Hatası: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ TEKRAR ÖNLEYİCİ SÜRÜM Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ FAZ 2 SÜRÜMÜ Aktif!", flush=True)
     bot.polling(non_stop=True)
