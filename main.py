@@ -10,7 +10,7 @@ ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 
 # --- SES KÜTÜPHANESİ ---
 VOICES = {
-    "david": "kaGxVtjLwllv1bi2GFag",   # Soğuk, Raporlayıcı, Tech/AI Horror
+    "david": "kaGxVtjLwllv1bi2GFag",   # Soğuk, Raporlayıcı, Tech/AI Horror (TAVSİYE EDİLEN)
     "richard": "eQIVHCAcQuAFeJps0K5l", # Ciddi, Kasvetli, Belgesel 
     "callum": "N2lVS1w4EtoT3dr4eOWO"   # Panik, Kurban 
 }
@@ -98,13 +98,14 @@ def generate_elevenlabs_audio(text, filename):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
     headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": ELEVENLABS_API_KEY}
     
+    # Eleştirmenin verdiği "Optimize Edilmiş Soğuk Tehdit" ayarları
     data = {
         "text": text, 
         "model_id": "eleven_turbo_v2_5", 
         "voice_settings": {
-            "stability": 0.45,         
-            "similarity_boost": 0.85,  
-            "style": 0.15              
+            "stability": 0.52,         # Kontrollü tehdit (teatral olmayan)
+            "similarity_boost": 0.85,  # David'in imzasını korur
+            "style": 0.10              # Minimal, soğuk vurgu
         }
     }
     
@@ -129,7 +130,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (FAZ 5: Mutlak Fiziksel İhlal)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (FAZ 5 & Optimize David Sesi)...")
         
         content = get_content(topic)
         
@@ -137,7 +138,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi. (Lütfen 1 dakika bekleyip tekrar deneyin).", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda David seslendiriyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ ElevenLabs stüdyosunda David (Soğuk & Kontrollü) seslendiriyor...", message.chat.id, msg.message_id)
 
         # --- YAZILIMSAL MAKAS (TEKRAR ÖNLEYİCİ) ---
         hook_text = content['hook']
@@ -185,5 +186,5 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ FAZ 5 SÜRÜMÜ Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ FAZ 5 & OPTİMİZE SES SÜRÜMÜ Aktif!", flush=True)
     bot.polling(non_stop=True)
