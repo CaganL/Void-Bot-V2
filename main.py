@@ -10,7 +10,7 @@ ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 
 # --- SES KÜTÜPHANESİ ---
 VOICES = {
-    "david": "kaGxVtjLwllv1bi2GFag",   # Soğuk, Raporlayıcı, Tech/AI Horror (TAVSİYE EDİLEN)
+    "david": "kaGxVtjLwllv1bi2GFag",   # Soğuk, Raporlayıcı, Tech/AI Horror
     "richard": "eQIVHCAcQuAFeJps0K5l", # Ciddi, Kasvetli, Belgesel 
     "callum": "N2lVS1w4EtoT3dr4eOWO"   # Panik, Kurban 
 }
@@ -23,7 +23,7 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 # --- SABİT ETİKETLER ---
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA (FAZ 3: PARALEL ŞOK) ---
+# --- GEMINI: SENARYO OLUŞTURMA (FAZ 4: THE BARRIER BREAK) ---
 def get_content(topic):
     models = [
         "gemini-flash-latest", 
@@ -42,15 +42,15 @@ def get_content(topic):
         f"Write a psychological horror short script about: '{topic}'. "
         "Strictly follow this exact format using '|||' as separator:\n"
         "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (STRICTLY 2 TO 6 WORDS MAX) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| VISUAL_SCENES_LIST ||| MAIN_LOCATION (1 Word) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags. DO NOT use #horror, #shorts, #fyp)\n\n"
-        "RULES (VIRAL SHORTS MODE - PHASE 3: THE PARALLEL SHOCK):\n"
-        "1. NO GORE, NO BLOOD. Build fear through paranoia and everyday technology.\n"
-        "2. ZERO REPORTING (SHOW, DON'T TELL): DO NOT explain or narrate. Use cold, fragmented sensory facts ONLY. Never use words like 'felt', 'silence', 'atmosphere', or 'realized'.\n"
-        "3. THE HOOK: STRICTLY MAXIMUM 6 WORDS. Immediate anomaly. (e.g., 'Photo received. It was me.').\n"
-        "4. THE CLIMAX (THE 3-STEP VIRAL SHOCK): You MUST end using this exact sequence:\n"
-        "   - Step 1 (Parallel Change): The digital anomaly updates/moves on its own (e.g., 'The image refreshed.', 'The reflection smiled.').\n"
-        "   - Step 2 (The Breach): The anomaly reacts to something IN THE ROOM with the narrator (e.g., 'My photo-self looked behind me.').\n"
-        "   - Step 3 (Physical Contact): Immediate, aggressive physical contact on the narrator's real body (e.g., 'A cold hand grabbed my shoulder.', 'Teeth scraped my actual ear.').\n"
-        "   NEVER end with atmosphere, silence, or thoughts.\n"
+        "RULES (VIRAL SHORTS MODE - PHASE 4: THE BARRIER BREAK):\n"
+        "1. NO GORE, NO BLOOD. Build fear through paranoia, reflections, and tech.\n"
+        "2. ZERO REPORTING & ZERO ATMOSPHERE: DO NOT use weak words like 'shifted', 'moved', 'display', 'cold air', 'breath', or 'tightened'. Action must be literal, physical, and sharp.\n"
+        "3. THE HOOK: STRICTLY MAXIMUM 6 WORDS. (e.g., 'My reflection blinked. I didn't.').\n"
+        "4. THE CLIMAX (THE BARRIER BREAK): You MUST end using this exact 3-step sequence:\n"
+        "   - Step 1 (The Impossible Action): The anomaly does an aggressive action on screen/in mirror (e.g., 'The reflection raised its hands.').\n"
+        "   - Step 2 (The Breach): It ignores physical boundaries (e.g., 'It reached right through the glass.').\n"
+        "   - Step 3 (The Physical Chokehold): Direct, hard physical contact on the narrator (e.g., 'I felt its fingers close around my actual throat.', 'A hand gripped my real shoulder.').\n"
+        "   NEVER end with just 'air', 'silence', or 'heavy room'. It MUST physically grab the narrator.\n"
         "5. STRICT RULE: DO NOT repeat the Hook in the Narration Script. Start the script with totally new words.\n"
         "6. POV RULE: 1st person ('I', 'My') ONLY."
     )
@@ -130,7 +130,7 @@ def handle(message):
         topic = args[1] if len(args) > 1 else "scary story"
         
         print(f"\n--- YENİ TALEP: {topic} ---", flush=True)
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (FAZ 3: Paralel Şok)...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor (FAZ 4: Camı Kırmak)...")
         
         content = get_content(topic)
         
@@ -186,5 +186,5 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ FAZ 3 SÜRÜMÜ Aktif!", flush=True)
+    print("Bot başlatılıyor... ⚡ FAZ 4 SÜRÜMÜ Aktif!", flush=True)
     bot.polling(non_stop=True)
