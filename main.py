@@ -4,7 +4,7 @@ import requests
 import time
 import subprocess
 import random
-import imageio_ffmpeg  # İŞTE BÜYÜK SİLAHIMIZ BURADA!
+import imageio_ffmpeg
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -82,7 +82,7 @@ def generate_elevenlabs_audio(text, filename):
         return False
     return False
 
-# --- VIDEO MOTORU: FFMPEG (PYTHON %100 GARANTİLİ) ---
+# --- VIDEO MOTORU: FFMPEG (PYTHON %100 GARANTİLİ VE SIKIŞTIRILMIŞ) ---
 def create_final_video(audio_file, category, output_file):
     if category not in ALLOWED_CATEGORIES:
         category = "dark"
@@ -99,18 +99,21 @@ def create_final_video(audio_file, category, output_file):
         
     bg_video = os.path.join(folder_path, random.choice(videos))
     
-    # Railway'in bozuk sistemini ezip kendi indirdiğimiz FFmpeg'i kullanıyoruz!
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     
+    # Telegram 50MB sınırını aşmamak için Diyet Programı (CRF 28)
     cmd = [
         ffmpeg_exe, "-y",
         "-stream_loop", "-1",          
         "-i", bg_video,                
         "-i", audio_file,              
-        "-c:v", "libx264",             # Copy hatasını önler, videoyu döngüde pürüzsüz yapar
-        "-preset", "ultrafast",        # RAM dostu, çok hızlı render modu
+        "-c:v", "libx264",             
+        "-preset", "ultrafast",        
+        "-crf", "28",                  # VİDEOYU SIKIŞTIRIR (Kaliteyi bozmadan boyutu ufalatır)
+        "-pix_fmt", "yuv420p",         # TELEGRAM'DA OYNATILABİLİR FORMAT (Siyah ekranı önler)
         "-c:a", "aac",                 
-        "-shortest",                   
+        "-shortest",
+        "-t", "60",                    # MAKSİMUM SÜRE (Güvenlik sigortası)
         "-map", "0:v:0",
         "-map", "1:a:0",
         output_file
@@ -171,7 +174,7 @@ def handle(message):
                     bot.send_video(message.chat.id, video, caption=caption_text)
                 os.remove(video_filename)
             else:
-                bot.edit_message_text("⚠️ Video klasörü boş veya FFmpeg hatası. Sadece ses gönderiliyor.", message.chat.id, msg.message_id)
+                bot.edit_message_text("⚠️ Video Telegram sınırını aştı veya bir hata oluştu. Sadece ses gönderiliyor.", message.chat.id, msg.message_id)
                 with open(audio_filename, "rb") as audio:
                     bot.send_audio(message.chat.id, audio, caption=caption_text, title=content['title'])
 
@@ -185,6 +188,6 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ YENİ NESİL PYTHON FFMPEG MOTORU AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ YENİ NESİL PYTHON FFMPEG + COMPRESSION MOTORU AKTİF!", flush=True)
     bot.polling(non_stop=True)
 
