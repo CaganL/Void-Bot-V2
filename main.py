@@ -4,6 +4,7 @@ import requests
 import time
 import subprocess
 import random
+import imageio_ffmpeg  # İŞTE BÜYÜK SİLAHIMIZ BURADA!
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -19,8 +20,6 @@ ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"])
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
-
-# Klasör isimlerimiz (Gemini sadece bunları seçebilecek)
 ALLOWED_CATEGORIES = ["bedroom", "tech", "outdoors", "dark"]
 
 # --- GEMINI: SENARYO OLUŞTURMA ---
@@ -83,15 +82,13 @@ def generate_elevenlabs_audio(text, filename):
         return False
     return False
 
-# --- VIDEO MOTORU: FFMPEG (SIFIR RAM & AKILLI KLASÖR) ---
+# --- VIDEO MOTORU: FFMPEG (PYTHON %100 GARANTİLİ) ---
 def create_final_video(audio_file, category, output_file):
-    # Kategori klasörünü kontrol et, yoksa 'dark' klasörüne düş
     if category not in ALLOWED_CATEGORIES:
         category = "dark"
         
     folder_path = os.path.join("backgrounds", category)
     
-    # Klasör veya içinde video yoksa güvenli çıkış
     if not os.path.exists(folder_path):
         os.makedirs(folder_path, exist_ok=True)
         return False
@@ -102,15 +99,18 @@ def create_final_video(audio_file, category, output_file):
         
     bg_video = os.path.join(folder_path, random.choice(videos))
     
-    # FFmpeg ile birleştirme (Render yok, sadece birleştirme yapar, RAM yemez)
+    # Railway'in bozuk sistemini ezip kendi indirdiğimiz FFmpeg'i kullanıyoruz!
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    
     cmd = [
-        "ffmpeg", "-y",
-        "-stream_loop", "-1",          # Video kısaysa başa sar
-        "-i", bg_video,                # Görüntü kaynağı
-        "-i", audio_file,              # Ses kaynağı
-        "-c:v", "copy",                # Görüntüyü renderlama, direkt kopyala (HIZ & DÜŞÜK RAM)
-        "-c:a", "aac",                 # Sesi uyumlu formata çevir
-        "-shortest",                   # Ses bittiği an videoyu kes
+        ffmpeg_exe, "-y",
+        "-stream_loop", "-1",          
+        "-i", bg_video,                
+        "-i", audio_file,              
+        "-c:v", "libx264",             # Copy hatasını önler, videoyu döngüde pürüzsüz yapar
+        "-preset", "ultrafast",        # RAM dostu, çok hızlı render modu
+        "-c:a", "aac",                 
+        "-shortest",                   
         "-map", "0:v:0",
         "-map", "1:a:0",
         output_file
@@ -185,7 +185,6 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ AKILLI KLASÖR VİDEO SÜRÜMÜ Aktif!", flush=True)
-    # Railway gibi sistemlerde FFmpeg kurulu olması gerekir. Kurulum komutu genellikle: apt-get install ffmpeg
+    print("Bot başlatılıyor... ⚡ YENİ NESİL PYTHON FFMPEG MOTORU AKTİF!", flush=True)
     bot.polling(non_stop=True)
 
