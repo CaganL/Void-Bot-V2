@@ -1,7 +1,6 @@
 import os
 import telebot
 import requests
-import time
 import subprocess
 import yt_dlp
 import imageio_ffmpeg
@@ -18,7 +17,7 @@ VOICES = {
 }
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"]) 
 
-# YENİ: VİDEO HAVUZU (Senin bulduğun oynatma listesi)
+# VİDEO HAVUZU (Oynatma listesi)
 PLAYLIST_URL = "https://youtube.com/playlist?list=PL4LOQK13CVLklHJF2kOn0jdcaSQSrgsRY"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
@@ -79,22 +78,25 @@ def generate_elevenlabs_audio(text, filename):
         return False
     return False
 
-# --- YENİ YOUTUBE MOTORU (Rastgele İndirme) ---
+# --- YENİ YOUTUBE MOTORU (Rastgele İndirme & HATA ÇÖZÜMÜ EKLENDİ) ---
 def download_random_bg(output_filename):
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() # FFmpeg'in yerini bulduk
+    
     ydl_opts = {
         'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': output_filename,
-        'playlistrandom': True,     # Listeden rastgele 1 tane seç
-        'max_downloads': 1,         # Sadece 1 tane indir
+        'playlistrandom': True,     
+        'max_downloads': 1,         
         'quiet': True,
-        'no_warnings': True
+        'no_warnings': True,
+        'ffmpeg_location': ffmpeg_exe # yt-dlp'ye birleştirme işlemini yapacağı motoru verdik!
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([PLAYLIST_URL])
         return True
     except Exception as e:
-        print(f"YouTube İndirme Hatası: {e}")
+        print(f"YouTube İndirme Hatası: {e}", flush=True)
         return False
 
 # --- VİDEO MOTORU: FFMPEG (Otomatik Kırpma + Sıkıştırma) ---
@@ -107,8 +109,7 @@ def create_final_video(audio_file, output_file):
         
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     
-    # Sihirli Kırpma: scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920
-    # Bu kod yatay (16:9) bir videoyu kalitesini bozmadan tam ortasından dikey (9:16) yapar.
+    # Sihirli Kırpma: scale=1080:1920...
     cmd = [
         ffmpeg_exe, "-y",
         "-stream_loop", "-1",          
@@ -129,7 +130,7 @@ def create_final_video(audio_file, output_file):
     
     try:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        if os.path.exists(bg_video): os.remove(bg_video) # Sunucuda yer kaplamaması için ham videoyu çöpe at
+        if os.path.exists(bg_video): os.remove(bg_video) # Çöpü temizle
         return True
     except Exception as e:
         print(f"FFmpeg Hatası: {e}", flush=True)
