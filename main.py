@@ -78,18 +78,19 @@ def generate_elevenlabs_audio(text, filename):
         return False
     return False
 
-# --- YENİ YOUTUBE MOTORU (Rastgele İndirme & HATA ÇÖZÜMÜ EKLENDİ) ---
+# --- YENİ YOUTUBE MOTORU (SADECE GÖRÜNTÜ - DAHA HIZLI) ---
 def download_random_bg(output_filename):
-    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() # FFmpeg'in yerini bulduk
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() 
     
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        # SİHİRLİ DOKUNUŞ: Sadece video kısmını indirir, sesi boşverir!
+        'format': 'bestvideo[ext=mp4]/best[ext=mp4]', 
         'outtmpl': output_filename,
         'playlistrandom': True,     
         'max_downloads': 1,         
         'quiet': True,
         'no_warnings': True,
-        'ffmpeg_location': ffmpeg_exe # yt-dlp'ye birleştirme işlemini yapacağı motoru verdik!
+        'ffmpeg_location': ffmpeg_exe 
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -99,17 +100,15 @@ def download_random_bg(output_filename):
         print(f"YouTube İndirme Hatası: {e}", flush=True)
         return False
 
-# --- VİDEO MOTORU: FFMPEG (Otomatik Kırpma + Sıkıştırma) ---
+# --- VİDEO MOTORU: FFMPEG ---
 def create_final_video(audio_file, output_file):
     bg_video = "temp_bg.mp4"
     
-    # YouTube'dan rastgele videoyu çek
     if not download_random_bg(bg_video):
         return False
         
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     
-    # Sihirli Kırpma: scale=1080:1920...
     cmd = [
         ffmpeg_exe, "-y",
         "-stream_loop", "-1",          
@@ -130,7 +129,7 @@ def create_final_video(audio_file, output_file):
     
     try:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        if os.path.exists(bg_video): os.remove(bg_video) # Çöpü temizle
+        if os.path.exists(bg_video): os.remove(bg_video) 
         return True
     except Exception as e:
         print(f"FFmpeg Hatası: {e}", flush=True)
@@ -150,7 +149,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve YouTube havuzundan video çekiliyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve YouTube havuzundan SADECE GÖRÜNTÜ çekiliyor...", message.chat.id, msg.message_id)
 
         hook_text = content['hook']
         script_text = content['script']
@@ -179,12 +178,13 @@ def handle(message):
 
             if video_success and os.path.exists(video_filename):
                 with open(video_filename, "rb") as video:
-                    bot.send_video(message.chat.id, video, caption=caption_text)
+                    # ZAMAN AŞIMI ÇÖZÜMÜ: Telegram'a "Beni 120 saniye bekle" diyoruz!
+                    bot.send_video(message.chat.id, video, caption=caption_text, timeout=120)
                 os.remove(video_filename)
             else:
                 bot.edit_message_text("⚠️ Video oluşturulamadı. Sadece ses gönderiliyor.", message.chat.id, msg.message_id)
                 with open(audio_filename, "rb") as audio:
-                    bot.send_audio(message.chat.id, audio, caption=caption_text, title=content['title'])
+                    bot.send_audio(message.chat.id, audio, caption=caption_text, title=content['title'], timeout=120)
 
             bot.delete_message(message.chat.id, msg.message_id)
             if os.path.exists(audio_filename): os.remove(audio_filename)
@@ -196,6 +196,6 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ TAM OTOMATİK YOUTUBE MOTORU AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ YOUTUBE (SES-SİZ) MOTORU AKTİF!", flush=True)
     bot.polling(non_stop=True)
 
