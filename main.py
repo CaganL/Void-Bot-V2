@@ -17,7 +17,6 @@ ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"])
 
 PLAYLIST_URL = "https://youtube.com/playlist?list=PL4LOQK13CVLklHJF2kOn0jdcaSQSrgsRY"
 
-# SİHİRLİ DOKUNUŞ BURADA: threaded=True yapıldı. Artık Telegram zaman aşımı vermeyecek!
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=True)
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
 
@@ -75,7 +74,7 @@ def generate_elevenlabs_audio(text, filename):
         return False
     return False
 
-# --- HIZLI VE STABİL İNDİRME MOTORU ---
+# --- HIZLI VE AKILLI İNDİRME MOTORU ---
 def download_random_bg(output_filename):
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() 
     ydl_opts = {
@@ -92,7 +91,11 @@ def download_random_bg(output_filename):
             ydl.download([PLAYLIST_URL])
         return True, "Başarılı"
     except Exception as e:
-        return False, f"YouTube İndirme Hatası: {str(e)}"
+        error_str = str(e)
+        # SİHİRLİ DOKUNUŞ: Eğer bot "1 tane indirdim, duruyorum!" diye bağırırsa, bunu hata değil başarı say!
+        if "Maximum number of downloads reached" in error_str:
+            return True, "Başarılı"
+        return False, f"YouTube İndirme Hatası: {error_str}"
 
 # --- FFMPEG: MONTAJ ---
 def create_final_video(audio_file, output_file):
@@ -102,6 +105,10 @@ def create_final_video(audio_file, output_file):
     success, error_msg = download_random_bg(bg_video)
     if not success:
         return False, error_msg
+        
+    # Her ihtimale karşı dosya gerçekten indi mi kontrolü
+    if not os.path.exists(bg_video):
+         return False, "Video başarılı görünüyor ama sunucuda bulunamadı."
         
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     
@@ -143,7 +150,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve Arka Plan Videosu İndiriliyor (Lütfen Bekleyin)...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve Arka Plan Videosu İndiriliyor...", message.chat.id, msg.message_id)
 
         hook_text = content['hook']
         script_text = content['script']
@@ -174,10 +181,8 @@ def handle(message):
                 with open(video_filename, "rb") as video:
                     bot.send_video(message.chat.id, video, caption=caption_text, timeout=120)
                 os.remove(video_filename)
-                # Video başarılı olursa "Bekleyin" mesajını sil
                 bot.delete_message(message.chat.id, msg.message_id)
             else:
-                # EĞER HATA ÇIKARSA MESAJI ASLA SİLME, EKRANA BAS!
                 hata_mesaji = f"⚠️ Video oluşturulamadı.\n\n**SEBEP:** `{v_error}`\n\nSadece ses gönderiliyor."
                 bot.edit_message_text(hata_mesaji, message.chat.id, msg.message_id, parse_mode="Markdown")
                 
@@ -193,6 +198,6 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ THREADED (ÇÖKMEYEN) MOTOR AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ YOUTUBE MOTORU KUSURSUZ AKTİF!", flush=True)
     bot.polling(non_stop=True)
 
