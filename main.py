@@ -1,4 +1,5 @@
 import os
+import random
 import telebot
 import requests
 import subprocess
@@ -11,13 +12,10 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 
 VOICES = {
-    "david": "kaGxVtjLwllv1bi2GFag",   
-    "richard": "eQIVHCAcQuAFeJps0K5l", 
-    "callum": "N2lVS1w4EtoT3dr4eOWO"   
+    "david": "kaGxVtjLwllv1bi2GFag"
 }
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"]) 
 
-# VİDEO HAVUZU (Oynatma listesi)
 PLAYLIST_URL = "https://youtube.com/playlist?list=PL4LOQK13CVLklHJF2kOn0jdcaSQSrgsRY"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
@@ -63,7 +61,6 @@ def get_content(topic):
             continue
     return None
 
-# --- SES MOTORU: ELEVENLABS ---
 def generate_elevenlabs_audio(text, filename):
     if not ELEVENLABS_API_KEY: return False
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
@@ -78,63 +75,71 @@ def generate_elevenlabs_audio(text, filename):
         return False
     return False
 
-# --- YENİ YOUTUBE MOTORU (SADECE GÖRÜNTÜ - DAHA HIZLI) ---
-def download_random_bg(output_filename):
-    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() 
-    
-    ydl_opts = {
-        # SİHİRLİ DOKUNUŞ: Sadece video kısmını indirir, sesi boşverir!
-        'format': 'bestvideo[ext=mp4]/best[ext=mp4]', 
-        'outtmpl': output_filename,
-        'playlistrandom': True,     
-        'max_downloads': 1,         
+# --- YENİ DEVRİM: SIFIR İNDİRME, CANLI YAYIN ÇEKME MOTORU ---
+def get_direct_stream_url():
+    # 1. Oynatma listesindeki videoların sadece linklerini çok hızlıca listele
+    ydl_opts_flat = {
+        'extract_flat': True,
         'quiet': True,
         'no_warnings': True,
-        'ffmpeg_location': ffmpeg_exe 
     }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([PLAYLIST_URL])
-        return True
-    except Exception as e:
-        print(f"YouTube İndirme Hatası: {e}", flush=True)
-        return False
+    with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
+        info = ydl.extract_info(PLAYLIST_URL, download=False)
+        if 'entries' in info:
+            entries = list(info['entries'])
+            random_entry = random.choice(entries)
+            video_url = random_entry.get('url') or random_entry.get('webpage_url')
+        else:
+            video_url = PLAYLIST_URL 
+            
+    # 2. Seçtiğimiz tek videonun gizli yayın linkini ve süresini al (Sesi umursama bile, sadece görüntü!)
+    ydl_opts_info = {
+        'format': 'bestvideo[height<=720][ext=mp4]/best[height<=720][ext=mp4]/best',
+        'quiet': True,
+        'no_warnings': True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
+        vid_info = ydl.extract_info(video_url, download=False)
+        direct_url = vid_info['url'] # Bu bizim sihirli canlı yayın linkimiz
+        duration = vid_info.get('duration', 60)
+        return direct_url, duration
 
-# --- VİDEO MOTORU: FFMPEG ---
+# --- FFMPEG: CANLI MONTAJ ---
 def create_final_video(audio_file, output_file):
-    bg_video = "temp_bg.mp4"
-    
-    if not download_random_bg(bg_video):
-        return False
-        
-    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-    
-    cmd = [
-        ffmpeg_exe, "-y",
-        "-stream_loop", "-1",          
-        "-i", bg_video,                
-        "-i", audio_file,
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
-        "-c:v", "libx264",             
-        "-preset", "ultrafast",        
-        "-crf", "28",                  
-        "-pix_fmt", "yuv420p",         
-        "-c:a", "aac",                 
-        "-shortest",
-        "-t", "60",                    
-        "-map", "0:v:0",
-        "-map", "1:a:0",
-        output_file
-    ]
-    
     try:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        if os.path.exists(bg_video): os.remove(bg_video) 
-        return True
+        # İnternetten direkt linki al
+        direct_url, duration = get_direct_stream_url()
+        
+        # Videonun rastgele bir saniyesine zıplayalım (Son 60 saniyeye girmeden)
+        max_start = max(0, duration - 60)
+        start_time = random.randint(0, int(max_start)) if max_start > 0 else 0
+        
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        cmd = [
+            ffmpeg_exe, "-y",
+            "-ss", str(start_time),  # YouTube sunucusuna "Videoyu bana şu saniyeden itibaren ver" diyoruz
+            "-i", direct_url,        # İNDİRME YOK! Görüntüyü havada yakalıyoruz
+            "-i", audio_file,        # Kendi ses dosyamız
+            "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+            "-c:v", "libx264",             
+            "-preset", "veryfast",        
+            "-crf", "28",                  
+            "-pix_fmt", "yuv420p",         
+            "-c:a", "aac",                 
+            "-shortest",             # EN KRİTİK KOMUT: Senin dediğin gibi ses bittiği an (örn 27. sn) bağlantıyı kes!
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            output_file
+        ]
+        
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            return False, f"FFmpeg Hatası: {result.stderr[-300:]}"
+            
+        return True, "Başarılı"
     except Exception as e:
-        print(f"FFmpeg Hatası: {e}", flush=True)
-        if os.path.exists(bg_video): os.remove(bg_video)
-        return False
+        return False, f"Yayın Çekme Hatası: {str(e)}"
 
 # --- TELEGRAM BOT KOMUTLARI ---
 @bot.message_handler(commands=["horror", "video"])
@@ -149,7 +154,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve YouTube havuzundan SADECE GÖRÜNTÜ çekiliyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve YouTube'dan saniyesi saniyesine canlı yayın çekiliyor...", message.chat.id, msg.message_id)
 
         hook_text = content['hook']
         script_text = content['script']
@@ -166,7 +171,7 @@ def handle(message):
 
         if generate_elevenlabs_audio(full_audio_text, audio_filename):
             
-            video_success = create_final_video(audio_filename, video_filename)
+            video_success, v_error = create_final_video(audio_filename, video_filename)
             
             caption_text = (
                 f"🪝 **HOOK:**\n{hook_text}\n\n"
@@ -178,15 +183,19 @@ def handle(message):
 
             if video_success and os.path.exists(video_filename):
                 with open(video_filename, "rb") as video:
-                    # ZAMAN AŞIMI ÇÖZÜMÜ: Telegram'a "Beni 120 saniye bekle" diyoruz!
                     bot.send_video(message.chat.id, video, caption=caption_text, timeout=120)
                 os.remove(video_filename)
             else:
-                bot.edit_message_text("⚠️ Video oluşturulamadı. Sadece ses gönderiliyor.", message.chat.id, msg.message_id)
+                hata_mesaji = f"⚠️ Video oluşturulamadı.\n\n**SEBEP:** `{v_error}`\n\nSadece ses gönderiliyor."
+                bot.edit_message_text(hata_mesaji, message.chat.id, msg.message_id, parse_mode="Markdown")
+                
                 with open(audio_filename, "rb") as audio:
                     bot.send_audio(message.chat.id, audio, caption=caption_text, title=content['title'], timeout=120)
 
-            bot.delete_message(message.chat.id, msg.message_id)
+            try:
+                bot.delete_message(message.chat.id, msg.message_id)
+            except: pass 
+            
             if os.path.exists(audio_filename): os.remove(audio_filename)
             
         else:
@@ -196,6 +205,6 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ YOUTUBE (SES-SİZ) MOTORU AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ ON-THE-FLY STREAM (SIFIR İNDİRME) MOTORU AKTİF!", flush=True)
     bot.polling(non_stop=True)
 
