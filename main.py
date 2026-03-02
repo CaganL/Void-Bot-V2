@@ -17,11 +17,11 @@ VOICES = {
 }
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"]) 
 
-# HAZIR LİMİNAL SPACE (TEKİNSİZ MEKANLAR) HAVUZU - 17 FARKLI VİDEO VAR
-PLAYLIST_URL = "https://youtube.com/playlist?list=PLO6BFV6fgGwscDyYlKEgmJMbcIJPwpmn0"
+# SİHİRLİ DOKUNUŞ: KORKU/HALLOWEEN TEMALI MİNECRAFT PARKUR HAVUZU
+PLAYLIST_URL = "https://www.youtube.com/watch?v=wWZ1t-iS2Ts"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=True)
-FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
+FIXED_HASHTAGS = "#horror #shorts #scary #creepy #minecraftparkour #fyp"
 
 # --- GEMINI: SENARYO OLUŞTURMA ---
 def get_content(topic):
@@ -167,7 +167,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve Arka Plan Videosu İndiriliyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve Korku Temalı Minecraft Arka Planı İndiriliyor...", message.chat.id, msg.message_id)
 
         hook_text = content['hook']
         script_text = content['script']
@@ -215,5 +215,5 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ SERİ ÜRETİM MODU AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ KORKU-MİNECRAFT MODU AKTİF!", flush=True)
     bot.polling(non_stop=True)
