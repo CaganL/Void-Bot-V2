@@ -1,6 +1,6 @@
 import os
 import random
-import re  # SÜRE HESAPLAMAK İÇİN EKLENDİ
+import re  
 import telebot
 import requests
 import subprocess
@@ -17,8 +17,8 @@ VOICES = {
 }
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"]) 
 
-# KENDİ REKLAMSIZ LİSTENİ OLUŞTURDUĞUNDA BURAYA YAPIŞTIR
-PLAYLIST_URL = "https://youtube.com/playlist?list=PL4LOQK13CVLklHJF2kOn0jdcaSQSrgsRY"
+# HAZIR LİMİNAL SPACE (TEKİNSİZ MEKANLAR) HAVUZU - 17 FARKLI VİDEO VAR
+PLAYLIST_URL = "https://youtube.com/playlist?list=PLO6BFV6fgGwscDyYlKEgmJMbcIJPwpmn0"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=True)
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #mystery #fyp"
@@ -77,7 +77,6 @@ def generate_elevenlabs_audio(text, filename):
         return False
     return False
 
-# --- HIZLI VE AKILLI İNDİRME MOTORU ---
 def download_random_bg(output_filename):
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() 
     ydl_opts = {
@@ -99,13 +98,11 @@ def download_random_bg(output_filename):
             return True, "Başarılı"
         return False, f"YouTube İndirme Hatası: {error_str}"
 
-# --- YENİ EKLENDİ: VİDEONUN TOPLAM SÜRESİNİ ÖLÇEN DEDEKTİF ---
 def get_video_duration(filename):
     try:
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         cmd = [ffmpeg_exe, '-i', filename]
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        # FFmpeg'in gizli raporundan "Duration: HH:MM:SS" kısmını bul
         match = re.search(r"Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})", result.stderr)
         if match:
             hours = int(match.group(1))
@@ -114,9 +111,8 @@ def get_video_duration(filename):
             return int(hours * 3600 + minutes * 60 + seconds)
     except Exception:
         pass
-    return 20 # Eğer süre okunamazsa güvenlik için varsayılan 20. saniyeyi ver
+    return 20 
 
-# --- FFMPEG: MONTAJ ---
 def create_final_video(audio_file, output_file):
     bg_video = "temp_bg.mp4"
     if os.path.exists(bg_video): os.remove(bg_video)
@@ -130,14 +126,13 @@ def create_final_video(audio_file, output_file):
         
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     
-    # SİHİRLİ DOKUNUŞ: Videonun gerçek süresini bul ve tüm video içinden rastgele bir saniye seç!
     total_duration = get_video_duration(bg_video)
     start_time = random.randint(0, max(0, total_duration - 1))
     
     cmd = [
         ffmpeg_exe, "-y",
         "-stream_loop", "-1",
-        "-ss", str(start_time),  # Rastgele seçilen herhangi bir saniyeden başlat
+        "-ss", str(start_time),  
         "-i", bg_video,                
         "-i", audio_file,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
@@ -160,7 +155,6 @@ def create_final_video(audio_file, output_file):
         if os.path.exists(bg_video): os.remove(bg_video)
         return False, f"FFmpeg Birleştirme Hatası: {str(e)}"
 
-# --- TELEGRAM BOT KOMUTLARI ---
 @bot.message_handler(commands=["horror", "video"])
 def handle(message):
     try:
@@ -221,6 +215,5 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ YOUTUBE MOTORU (TAM RASTGELE ZAMANLAMA) AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ SERİ ÜRETİM MODU AKTİF!", flush=True)
     bot.polling(non_stop=True)
-
