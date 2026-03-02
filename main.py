@@ -17,7 +17,6 @@ VOICES = {
 }
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"]) 
 
-# SİHİRLİ DOKUNUŞ: KORKU/HALLOWEEN TEMALI MİNECRAFT PARKUR HAVUZU
 PLAYLIST_URL = "https://www.youtube.com/watch?v=wWZ1t-iS2Ts"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=True)
@@ -80,7 +79,8 @@ def generate_elevenlabs_audio(text, filename):
 def download_random_bg(output_filename):
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() 
     ydl_opts = {
-        'format': 'bestvideo[height<=720][ext=mp4]/best[ext=mp4]/best', 
+        # KALİTE GÜNCELLEMESİ: 720p sınırını kaldırdık, 1080p'ye kadar en iyi kaliteyi çekecek!
+        'format': 'bestvideo[height<=1080][ext=mp4]/best[ext=mp4]/best', 
         'outtmpl': output_filename,
         'playlistrandom': True,     
         'max_downloads': 1,         
@@ -137,8 +137,8 @@ def create_final_video(audio_file, output_file):
         "-i", audio_file,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
         "-c:v", "libx264",             
-        "-preset", "veryfast",        
-        "-crf", "28",                  
+        "-preset", "fast",        # KALİTE GÜNCELLEMESİ: veryfast yerine fast yaptık, daha özenli işleyecek
+        "-crf", "23",             # KALİTE GÜNCELLEMESİ: Sıkıştırma oranını 28'den 23'e çektik. (Pırıl pırıl olacak)
         "-pix_fmt", "yuv420p",         
         "-c:a", "aac",                 
         "-shortest",             
@@ -167,7 +167,7 @@ def handle(message):
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve Korku Temalı Minecraft Arka Planı İndiriliyor...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ HD Kalitede Video İşleniyor (Bu biraz daha uzun sürebilir)...", message.chat.id, msg.message_id)
 
         hook_text = content['hook']
         script_text = content['script']
@@ -215,5 +215,5 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ KORKU-MİNECRAFT MODU AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ YÜKSEK KALİTE (HD) MODU AKTİF!", flush=True)
     bot.polling(non_stop=True)
