@@ -22,7 +22,7 @@ PLAYLIST_URL = "https://www.youtube.com/watch?v=wWZ1t-iS2Ts"
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=True)
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #minecraftparkour #fyp"
 
-# --- GEMINI: SENARYO OLUŞTURMA ---
+# --- GEMINI: VİRAL SENARYO OLUŞTURMA (GÜNCELLENDİ) ---
 def get_content(topic):
     models = ["gemini-flash-latest", "gemini-2.5-flash"]
     safety_settings = [
@@ -32,16 +32,19 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
     ]
 
+    # ELEŞTİRMENİN ALTIN KURALLARI BURAYA EKLENDİ
     base_prompt = (
-        f"Write a psychological horror short script about: '{topic}'. "
+        "CRITICAL INSTRUCTION: This story must feel deeply disturbing and uncomfortable. If the ending is weak or subtle, rewrite it entirely.\n\n"
+        f"Write a viral psychological horror short script about: '{topic}'. "
         "Strictly follow this exact format using '|||' as separator:\n"
         "CLICKBAIT TITLE (1st Person POV ONLY) ||| PUNCHY HOOK (STRICTLY 2 TO 6 WORDS MAX) ||| SEO DESCRIPTION ||| NARRATION SCRIPT (55-65 WORDS) ||| 3_UNIQUE_SEARCH_VARIANTS ||| #tags (Max 3 unique tags)\n\n"
-        "RULES:\n"
-        "1. NO GORE. Build fear through tech paranoia and physical space invasion.\n"
-        "2. ZERO THOUGHTS, ZERO LOGIC. Write ONLY raw, cold sights and sounds.\n"
-        "3. THE HOOK: STRICTLY MAXIMUM 6 WORDS.\n"
-        "4. DO NOT repeat the Hook in the Narration Script.\n"
-        "5. POV RULE: 1st person ('I', 'My') ONLY."
+        "VIRAL SHORTS RULES:\n"
+        "1. STRUCTURE: Hook -> Immediate Situation -> Escalation -> Shocking Climax. Max 6-8 short, intense sentences total.\n"
+        "2. THE CLIMAX: The final sentence MUST contain a strong, shocking disturbing event or reveal (e.g., 'My reflection smiled, but I didn't.', 'Something grabbed my ankle.'). NO vague cliffhangers like 'the video kept playing'.\n"
+        "3. NO FILLER, NO POETRY: Every sentence must increase tension. Avoid atmospheric descriptions like 'the faucet dripped' or 'dust floated'. Use simple, direct, raw language.\n"
+        "4. ESCALATE CONTINUOUSLY: First sentence after the hook must jump immediately into the disturbing situation.\n"
+        "5. INTERACTION: The story MUST include at least one direct physical or supernatural interaction (grabbing, touching, reflection moving, object moving alone).\n"
+        "6. NO GORE. Build fear through tech paranoia and physical space invasion. POV RULE: 1st person ('I', 'My') ONLY. DO NOT repeat the Hook in the script."
     )
     
     for current_model in models:
@@ -79,7 +82,6 @@ def generate_elevenlabs_audio(text, filename):
 def download_random_bg(output_filename):
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() 
     ydl_opts = {
-        # KALİTE GÜNCELLEMESİ: 720p sınırını kaldırdık, 1080p'ye kadar en iyi kaliteyi çekecek!
         'format': 'bestvideo[height<=1080][ext=mp4]/best[ext=mp4]/best', 
         'outtmpl': output_filename,
         'playlistrandom': True,     
@@ -137,8 +139,8 @@ def create_final_video(audio_file, output_file):
         "-i", audio_file,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
         "-c:v", "libx264",             
-        "-preset", "fast",        # KALİTE GÜNCELLEMESİ: veryfast yerine fast yaptık, daha özenli işleyecek
-        "-crf", "23",             # KALİTE GÜNCELLEMESİ: Sıkıştırma oranını 28'den 23'e çektik. (Pırıl pırıl olacak)
+        "-preset", "fast",        
+        "-crf", "26",             
         "-pix_fmt", "yuv420p",         
         "-c:a", "aac",                 
         "-shortest",             
@@ -161,13 +163,13 @@ def handle(message):
         args = message.text.split(maxsplit=1)
         topic = args[1] if len(args) > 1 else "scary story"
         
-        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Senaryo yazılıyor...")
+        msg = bot.reply_to(message, f"💀 **{topic.upper()}**\n📝 Agresif Senaryo Yazılıyor...")
         content = get_content(topic)
         if not content:
             bot.edit_message_text("❌ İçerik üretilemedi.", message.chat.id, msg.message_id)
             return
 
-        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ HD Kalitede Video İşleniyor (Bu biraz daha uzun sürebilir)...", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"🎬 **{content['title']}**\n🎙️ Seslendiriliyor ve Video İşleniyor...", message.chat.id, msg.message_id)
 
         hook_text = content['hook']
         script_text = content['script']
@@ -215,5 +217,5 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ YÜKSEK KALİTE (HD) MODU AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ AGRESiF SENARYO MODU AKTİF!", flush=True)
     bot.polling(non_stop=True)
