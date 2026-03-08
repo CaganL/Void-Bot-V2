@@ -17,12 +17,13 @@ VOICES = {
 }
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", VOICES["david"]) 
 
-PLAYLIST_URL = "https://www.youtube.com/watch?v=wWZ1t-iS2Ts"
+# HALLOWEEN/KORKU TEMALI MİNECRAFT PARKUR VİDEOSU (Seçenek 2)
+PLAYLIST_URL = "https://www.youtube.com/watch?v=b_chaiK25-U"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=True)
 FIXED_HASHTAGS = "#horror #shorts #scary #creepy #minecraftparkour #fyp"
 
-# --- GEMINI: VİRAL SENARYO OLUŞTURMA (GÜNCELLENDİ) ---
+# --- GEMINI: VİRAL SENARYO OLUŞTURMA ---
 def get_content(topic):
     models = ["gemini-flash-latest", "gemini-2.5-flash"]
     safety_settings = [
@@ -32,7 +33,6 @@ def get_content(topic):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
     ]
 
-    # ELEŞTİRMENİN ALTIN KURALLARI BURAYA EKLENDİ
     base_prompt = (
         "CRITICAL INSTRUCTION: This story must feel deeply disturbing and uncomfortable. If the ending is weak or subtle, rewrite it entirely.\n\n"
         f"Write a viral psychological horror short script about: '{topic}'. "
@@ -217,5 +217,5 @@ def handle(message):
         bot.reply_to(message, f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot başlatılıyor... ⚡ AGRESiF SENARYO MODU AKTİF!", flush=True)
+    print("Bot başlatılıyor... ⚡ YENİ LİNK AKTİF (SEÇENEK 2)!", flush=True)
     bot.polling(non_stop=True)
