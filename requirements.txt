@@ -1,12 +1,4 @@
 pyTelegramBotAPI
-moviepy==1.0.3
 requests
-edge-tts
-beautifulsoup4
-numpy<2
-Pillow==9.5.0
-imageio==2.9.0
+yt-dlp>=2024.03.10
 imageio-ffmpeg
-decorator==4.4.2
-imageio-ffmpeg
-yt-dlp
